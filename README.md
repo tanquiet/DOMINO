@@ -321,7 +321,10 @@ The bar at the top switches between them.
 
 - **Alerts near me:** problems reported within 1, 2, 5 or 10 km of you, or of anywhere you tap, so you can check a route before leaving. Each shows how many people reported it, how recently, and what to do. Heavy traffic shows a likely cause if flooding, rain or a pothole is reported within 1.5 km.
 - **Send a report:** four short steps: the problem, a photo (optional, since some problems like no water have nothing to photograph), the place, then check and send. It covers potholes, flooding, heavy rain, heavy traffic, leaks, fallen wires and more, names the responsible department, and appears as an alert.
-- **My reports:** follow each report from Reported to Assigned, In progress and Fixed.
+- **My reports:** a progress bar follows each report from Reported to Assigned, In progress and Fixed, with the time of each stage. Once the department marks it fixed, the report opens a form to grade the work and suggest improvements.
+- **Grade & suggest:** citizens grade fixed work or a service they use from A (Excellent) to F (Failed) and can add a suggestion. Grading the same thing again replaces the earlier grade, and one repair that closed several reports is graded once. Fixed work and services use real photographs: the citizen's own photo when the report has one, otherwise a credited example from Wikimedia Commons labelled "Example photo". Everyone sees the department report card, lowest grade first. Suggestions appear without names, and only to officers (for their own department) and the control room, under Infrastructure analysis.
+- **Contractor reports:** officers and admins can record the contractor on a job at the Department desk. On any fixed job, a citizen can report that contractor to the control room with a reason, details and an optional photo, once per job. Only the admin sees these, under **Contractor reports**: totals and citizen grades per contractor, each report without the citizen's name, a status and a reply the citizen can read. They are citizens' reports, not findings, so check the work before acting. **Load examples** on that page adds invented reports, with obviously made-up contractor names, for demonstrations.
+- **Voice (English, Kannada, Hindi):** say the problem on the first step of a report and the app suggests the problem type and department, speak a description or a suggestion instead of typing, or have an alert read aloud. It uses the browser's speech features, so it needs no server. The buttons do not appear where a browser lacks support (speaking does not work in Firefox), and typing always works.
 - **Look and feel:** dark by default, with a Light/Dark button at the top of every page, remembered on each device. The cascade map stays dark in both. Citizens and guests also get large buttons and a bottom tab bar on phones.
 - **I see this too / Warn others:** confirm an alert, or send it on through WhatsApp or a message.
 - **Department desk:** every open job, most urgent first, with filters, target times and status history. Reports of the same problem become one job (within 100 m, 300 m for traffic, 1 km for rain).
@@ -357,8 +360,9 @@ KPTCL lists office numbers but no public fault line, so power faults go to BESCO
 
 ### What this does not do yet
 
-- **Alerts and reports stay on one device.** They are saved in this browser, so another person's phone will not see them. To reach other people, use **Warn others**. Automatic alerts between phones, and delivery to departments, need a server, moderation of public photos and each department's agreement.
+- **Alerts, reports, grades and contractor reports stay on one device.** They are saved in this browser, so another person's phone will not see them and departments do not receive grades or suggestions yet. To reach other people, use **Warn others**. Automatic alerts between phones, and delivery to departments, need a server, moderation of public photos and each department's agreement.
 - **Notifications** only work while the app is open on that device.
+- **Voice is not private or guaranteed.** The browser's speech service turns speech into text and may send it over the internet (Chrome uses Google's service), so this needs a privacy review before real use. Noise reduces accuracy, and reading aloud depends on the voices installed on each device: without a Kannada or Hindi voice it reads in English and says so. The Kannada and Hindi words and alerts should be checked by fluent speakers.
 - **Photos are not analysed.** The person picks the problem type; the app can suggest one from the words they type.
 - **Alerts are citizen reports, not official warnings,** and are labelled that way.
 
@@ -474,6 +478,9 @@ domino-app-stage/knockon/
 │   ├── parity_check.mjs      checks the browser engine matches Python
 │   ├── test_web.mjs          tests for link strength, reports, alerts and responses
 │   ├── test_complaints.mjs   tests for complaint routing, priority and analysis
+│   ├── test_feedback.mjs     tests for grades, suggestions and the report card
+│   ├── test_voice.mjs        tests for voice words, spoken alerts and fallbacks
+│   ├── test_contractors.mjs  tests for contractor names and reports to the control room
 │   └── test_auth.mjs         tests for accounts and what each role can open
 └── web/
     ├── dist/                 the built app: serve this folder
@@ -488,10 +495,15 @@ domino-app-stage/knockon/
         ├── auth.js           accounts and the three roles
         ├── ComplaintsPage.jsx  citizen alerts, reports, department desk, analysis
         ├── complaints.js     routing, alerts, priority score, duplicates, analysis
+        ├── feedback.js       grades, suggestions and the department report card
+        ├── workPhotos.js     credits for the example photos in web/public/photos
+        ├── contractors.js    citizens' contractor reports and the per-contractor summary
+        ├── voice.js          speech input and output, Kannada and Hindi alerts
+        ├── VoiceUI.jsx       microphone and read-aloud buttons
         ├── HelpPage.jsx      phone numbers, questions, settings
         ├── contacts.js       every authority number, with its source
         ├── settings.js       this device's preferences
-        ├── complaintStore.js saves complaints and photos in the browser
+        ├── complaintStore.js saves complaints, photos and grades in the browser
         ├── AlertsPanel.jsx   alerts panel
         ├── AgencyReports.jsx reports to BWSSB and KPTCL
         ├── ReportCard.jsx    report-an-incident form
@@ -513,7 +525,7 @@ npm run build    # rebuilds web/dist
 python sim/test_engine.py
 python tools/parity_expected.py
 node tools/parity_check.mjs
-node --test tools/test_web.mjs tools/test_complaints.mjs tools/test_auth.mjs
+node --test tools/test_web.mjs tools/test_complaints.mjs tools/test_feedback.mjs tools/test_voice.mjs tools/test_contractors.mjs tools/test_auth.mjs
 ```
 
 ---

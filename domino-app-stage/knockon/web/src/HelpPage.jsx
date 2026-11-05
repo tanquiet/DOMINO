@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CHECKED_ON, CONTACT_GROUPS, EMERGENCY, HELP_TOPICS, searchContacts, telHref, whatsappHref } from './contacts.js';
 import { distanceKm } from './mapkit.js';
 import { addHelpQuery, loadHelpQueries, loadSettings, removeHelpQuery, saveSettings } from './settings.js';
-import { allComplaints, deleteComplaints } from './complaintStore.js';
+import { allComplaints, allContractorReports, allFeedback, deleteComplaints, deleteContractorReports, deleteFeedback } from './complaintStore.js';
 import { ROLES, listUsers, removeUser } from './auth.js';
 
 const FAQ = [
@@ -135,7 +135,11 @@ function Settings({ user }) {
     const everything = await allComplaints();
     const all = user.role === 'admin' ? everything : everything.filter((c) => c.ownerId === user.id);
     await deleteComplaints(all.map((c) => c.id));
-    setNote(`Removed ${all.length} report${all.length === 1 ? '' : 's'} from this device.`);
+    const grades = (await allFeedback()).filter((f) => user.role === 'admin' || f.userId === user.id);
+    await deleteFeedback(grades.map((f) => f.id));
+    const flagged = (await allContractorReports()).filter((r) => user.role === 'admin' || r.userId === user.id);
+    await deleteContractorReports(flagged.map((r) => r.id));
+    setNote(`Removed ${all.length} report${all.length === 1 ? '' : 's'}, ${grades.length} grade${grades.length === 1 ? '' : 's'} and ${flagged.length} contractor report${flagged.length === 1 ? '' : 's'} from this device.`);
   };
   const findNearest = () => {
     if (!s.area) { setNote('Set your area first.'); return; }
@@ -177,7 +181,7 @@ function Settings({ user }) {
         <section className="c-panel h-setting">
           <h3>My data</h3>
           <p className="c-foot">Reports and photos are stored only in this browser.</p>
-          <button className="c-btn" onClick={clearReports}>{user.role === 'admin' ? 'Delete all reports on this device' : 'Delete my reports'}</button>
+          <button className="c-btn" onClick={clearReports}>{user.role === 'admin' ? 'Delete all reports and grades on this device' : 'Delete my reports and grades'}</button>
         </section>
       )}
       {note && <p className="c-foot" role="status">{note}</p>}

@@ -84,6 +84,14 @@ export const HAZARDS = {
 export const STATUSES = ['new', 'assigned', 'in_progress', 'resolved'];
 export const CITIZEN_STATUS = { new: 'Reported', assigned: 'Assigned', in_progress: 'In progress', resolved: 'Fixed' };
 export const STATUS_LABEL = { new: 'New', assigned: 'Assigned', in_progress: 'In progress', resolved: 'Resolved' };
+const CITIZEN_STATUS_NOTE = {
+  new: 'Waiting for the department to take this job.',
+  assigned: 'The department has assigned this job.',
+  in_progress: 'Work has started.',
+  resolved: 'The department says this is fixed.',
+};
+// How far a report has got, for the progress bar a citizen sees.
+export const progressOf = (status) => ({ step: STATUSES.indexOf(status) + 1, total: STATUSES.length, note: CITIZEN_STATUS_NOTE[status] });
 
 export const BANDS = [
   { id: 'critical', label: 'Critical', min: 70 },
@@ -99,12 +107,32 @@ const UTILITY_CATEGORIES = new Set(['flood', 'water_leak', 'no_water', 'sewage',
 // The incident types the cascade map can simulate.
 export const CASCADE_KIND = { flood: 'flood', heavy_rain: 'flood', water_leak: 'water', no_water: 'water', power_line: 'power', transmission: 'power' };
 
-// A suggestion from the words typed. The photo itself is not analysed.
+// Kannada and Hindi words, for people who speak or type in those languages.
+// These should be checked and extended by fluent speakers before real use.
+const LOCAL_WORDS = {
+  pothole: ['ಗುಂಡಿ', 'ರಸ್ತೆ ಹಾಳಾ', 'ಫುಟ್‌ಪಾತ್', 'गड्ढा', 'गड्ढे', 'सड़क टूट', 'फुटपाथ'],
+  flood: ['ಪ್ರವಾಹ', 'ಜಲಾವೃತ', 'ನೀರು ನಿಂತ', 'ಚರಂಡಿ', 'बाढ़', 'जलभराव', 'पानी भर', 'नाली'],
+  water_leak: ['ಸೋರಿಕೆ', 'ಪೈಪ್', 'ಸೋರುತ್ತಿದೆ', 'रिसाव', 'पाइप', 'लीक'],
+  no_water: ['ನೀರು ಇಲ್ಲ', 'ನೀರಿಲ್ಲ', 'ನೀರು ಬರುತ್ತಿಲ್ಲ', 'ಟ್ಯಾಂಕರ್', 'पानी नहीं', 'टैंकर'],
+  sewage: ['ಒಳಚರಂಡಿ', 'ಮ್ಯಾನ್‌ಹೋಲ್', 'ಕೊಳಚೆ', 'ದುರ್ವಾಸನೆ', 'सीवर', 'मैनहोल', 'गंदा पानी', 'बदबू'],
+  power_line: ['ವಿದ್ಯುತ್', 'ಕರೆಂಟ್', 'ತಂತಿ', 'ಟ್ರಾನ್ಸ್‌ಫಾರ್ಮರ್', 'बिजली', 'करंट', 'ट्रांसफार्मर', 'तार गिर'],
+  transmission: ['ಟವರ್', 'ಹೈ ವೋಲ್ಟೇಜ್', 'टावर', 'हाई वोल्टेज'],
+  street_light: ['ಬೀದಿ ದೀಪ', 'ಸ್ಟ್ರೀಟ್ ಲೈಟ್', 'स्ट्रीट लाइट', 'बत्ती', 'अंधेरा'],
+  garbage: ['ಕಸ', 'ತ್ಯಾಜ್ಯ', 'कचरा', 'कूड़ा'],
+  fallen_tree: ['ಮರ ಬಿದ್ದ', 'ಕೊಂಬೆ', 'पेड़', 'टहनी'],
+  signal: ['ಸಿಗ್ನಲ್', 'सिग्नल'],
+  heavy_rain: ['ಮಳೆ', 'बारिश'],
+  traffic: ['ಟ್ರಾಫಿಕ್', 'ಸಂಚಾರ ದಟ್ಟಣೆ', 'ट्रैफिक', 'जाम'],
+};
+// Speech services and keyboards can write the same letters in different ways.
+const sameLetters = (s) => s.toLowerCase().normalize('NFC').replace(/[\u200c\u200d]/g, '');
+
+// A suggestion from the words typed or spoken. The photo itself is not analysed.
 export function suggestCategory(text) {
-  const t = (text || '').toLowerCase();
+  const t = sameLetters(text || '');
   let best = null, bestScore = 0;
   for (const [id, c] of Object.entries(CATEGORIES)) {
-    const score = c.words.reduce((s, w) => s + (t.includes(w) ? w.length : 0), 0);
+    const score = [...c.words, ...(LOCAL_WORDS[id] || [])].map(sameLetters).reduce((s, w) => s + (t.includes(w) ? w.length : 0), 0);
     if (score > bestScore) { best = id; bestScore = score; }
   }
   return best;
@@ -267,9 +295,13 @@ export function sampleComplaints(nodes, now = Date.now()) {
   }));
   // A few jobs already in progress or closed, so the desk and the analysis have history to show.
   const advance = (c, status, afterH) => withStatus(c, status, c.createdAt + afterH * H);
-  list[4] = advance(list[4], 'assigned', 6);
-  list[6] = advance(list[6], 'in_progress', 2);
-  list.push(advance(makeComplaint({ category: 'pothole', hazard: 'medium', ...at(hospitals, 21, 0.01), description: 'Patched last week.', sample: true }, now - 120 * H, () => 0.7), 'resolved', 40));
-  list.push(advance(makeComplaint({ category: 'water_leak', hazard: 'low', ...at(res, 7, 0.003), description: 'Leak fixed.', sample: true }, now - 80 * H, () => 0.8), 'resolved', 16));
+  // Contractor names here are invented for the demo.
+  list[4] = { ...advance(list[4], 'assigned', 6), contractor: 'Sample Contractor A' };
+  list[6] = { ...advance(list[6], 'in_progress', 2), contractor: 'Sample Contractor B' };
+  list.push({ ...advance(makeComplaint({ category: 'pothole', hazard: 'medium', ...at(hospitals, 21, 0.01), description: 'Patched last week.', sample: true }, now - 120 * H, () => 0.7), 'resolved', 40), contractor: 'Sample Contractor A' });
+  list.push({ ...advance(makeComplaint({ category: 'water_leak', hazard: 'low', ...at(res, 7, 0.003), description: 'Leak fixed.', sample: true }, now - 80 * H, () => 0.8), 'resolved', 16), contractor: 'Sample Contractor B' });
+  list.push({ ...advance(makeComplaint({ category: 'garbage', hazard: 'low', ...at(hospitals, 23, 0.012), description: 'Pile cleared by the roadside.', sample: true }, now - 100 * H, () => 0.85), 'resolved', 30), contractor: 'Sample Contractor C' });
+  list.push({ ...advance(makeComplaint({ category: 'street_light', hazard: 'low', ...at(hospitals, 25, 0.009), description: 'Lights repaired on this stretch.', sample: true }, now - 90 * H, () => 0.9), 'resolved', 36), contractor: 'Sample Contractor C' });
+  list.push(advance(makeComplaint({ category: 'fallen_tree', hazard: 'medium', ...at(hospitals, 27, 0.007), description: 'Tree removed from the road.', sample: true }, now - 60 * H, () => 0.95), 'resolved', 10));
   return list;
 }

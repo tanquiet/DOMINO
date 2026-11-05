@@ -1,6 +1,6 @@
 // This device's preferences and help desk questions. Everything still works if storage is blocked.
 const KEY = 'domino-settings', QUERIES = 'domino-help-queries';
-const DEFAULTS = { theme: 'dark', area: null, radiusKm: 5, notify: false, welcomed: false, confirmed: [] };
+const DEFAULTS = { theme: 'dark', area: null, radiusKm: 5, notify: false, welcomed: false, confirmed: [], voiceLang: 'en-IN' };
 let memory = null, memoryQueries = [];
 
 function read(key, fallback) {

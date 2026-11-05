@@ -1,12 +1,17 @@
 // The public complaints page: report with a photo, a priority desk for departments, and analysis.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import DeckGL from '@deck.gl/react';
 import { BitmapLayer, IconLayer, ScatterplotLayer } from '@deck.gl/layers';
 import { TileLayer } from '@deck.gl/geo-layers';
 import { pinAtlas } from './mapkit.js';
 import { ALERT_ADVICE, AREAS, BANDS, CASCADE_KIND, CATEGORIES, CITIZEN_GROUPS, CITIZEN_STATUS, DEPARTMENTS, HAZARDS, STATUSES, STATUS_LABEL, activeAlerts, alertShareText, analyse, groupComplaints,
-  makeComplaint, nearestArea, sampleComplaints, scoreComplaint, shareText, suggestCategory, withStatus } from './complaints.js';
-import { allComplaints, deleteComplaints, preparePhoto, saveComplaints } from './complaintStore.js';
+  makeComplaint, nearestArea, progressOf, sampleComplaints, scoreComplaint, shareText, suggestCategory, withStatus } from './complaints.js';
+import { allComplaints, allContractorReports, allFeedback, deleteComplaints, deleteContractorReports, deleteFeedback, preparePhoto, saveComplaints, saveContractorReports, saveFeedback } from './complaintStore.js';
+import { CONTRACTOR_NAME_MAX, NOT_NAMED, REPORT_DETAILS_MAX, REPORT_REASONS, REPORT_STATUS, cleanContractorName, contractorOf, contractorSummary, makeContractorReport, reportForJob, reviewReport, sampleContractorReports, sortReports } from './contractors.js';
+import { DEPARTMENT_PHOTO, WORK_PHOTOS, workPhotoUrl } from './workPhotos.js';
+import { MicButton, SpeakAlert, VoiceLangPicker } from './VoiceUI.jsx';
+import { appendDictated, canListen, canSpeak } from './voice.js';
+import { GRADES, SUGGESTION_MAX, fixedWork, gradeForJob, gradeForService, makeFeedback, reportCard, sampleFeedback, suggestionsFor } from './feedback.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { DEMO_ACCOUNTS, departmentsFor } from './auth.js';
 
@@ -136,6 +141,7 @@ function AlertCard({ a, now, onConfirm, confirmed, selected }) {
         <div className="c-actions">
           <button className="c-btn" disabled={confirmed} onClick={() => onConfirm(a)}>{confirmed ? 'Thanks, counted ✓' : 'I see this too'}</button>
           <button className="c-btn" onClick={share}>Warn others</button>
+          <SpeakAlert alert={a} />
           <a className="c-btn" href={mapsUrl(a.lead)} target="_blank" rel="noreferrer">Open map ↗</a>
         </div>
         {note && <p className="c-foot">{note}</p>}
@@ -163,6 +169,7 @@ function AlertsView({ list, nodes, center, now, onConfirm, onReport, onLoadSampl
   const [focus, setFocus] = useState(() => (settings.area ? { ...settings.area, zoom: ZOOM_FOR_KM[settings.radiusKm] } : null));
   const [selectedId, setSelectedId] = useState(null);
   const [note, setNote] = useState(null);
+  const [voiceLang, setVoiceLang] = useState(settings.voiceLang);
   const radiusKm = settings.radiusKm;
   const alerts = useMemo(() => activeAlerts(list, nodes, now, place, radiusKm), [list, nodes, now, place, radiusKm]);
   const everywhere = useMemo(() => activeAlerts(list, nodes, now).length, [list, nodes, now]);
@@ -212,6 +219,7 @@ function AlertsView({ list, nodes, center, now, onConfirm, onReport, onLoadSampl
       <div className="z-controls">
         <button className="c-btn" onClick={locate}>Use my location</button>
         <AreaPicker place={place} onPick={goTo} emptyLabel="All of Bengaluru" />
+        {canSpeak() && <VoiceLangPicker value={voiceLang} onChange={setVoiceLang} />}
         <div className="c-seg" role="group" aria-label="Distance">
           {[1, 2, 5, 10].map((km) => <button key={km} className={radiusKm === km ? 'on' : ''} aria-pressed={radiusKm === km} onClick={() => setRadius(km)}>{km} km</button>)}
         </div>
@@ -300,6 +308,15 @@ function ReportView({ nodes, center, inside, list, onSubmit, draft, setDraft, us
       {step === 0 && (
         <section className="z-step">
           <h2>What is the problem?</h2>
+          {canListen() && (
+            <div className="v-say">
+              <MicButton label="Say the problem" onText={(text) => patch({ description: text.slice(0, 500) })} />
+              {description.trim() && <p className="c-quote">“{description.trim()}”</p>}
+              {description.trim() && (suggestion
+                ? <button className="c-send v-use" onClick={() => patch({ category: suggestion, step: 1 })}>{CATEGORIES[suggestion].icon} {CATEGORIES[suggestion].label}: goes to {DEPARTMENTS[CATEGORIES[suggestion].dept].short}. Use this</button>
+                : <p className="c-foot">We could not tell the problem from that. Your words are saved, so choose the problem below or try again.</p>)}
+            </div>
+          )}
           {CITIZEN_GROUPS.map((g) => (
             <div key={g.label}>
               <h3>{g.label}</h3>
@@ -329,6 +346,7 @@ function ReportView({ nodes, center, inside, list, onSubmit, draft, setDraft, us
           </div>
           <label className="c-label" htmlFor="c-desc">Anything else to add? (optional)</label>
           <textarea id="c-desc" className="z-text" rows={3} maxLength={500} value={description} onChange={(e) => patch({ description: e.target.value })} placeholder="What do you see? How long has it been like this?" />
+          <MicButton onText={(text) => setDraft((d) => ({ ...d, description: appendDictated(d.description, text, 500) }))} />
           {suggestion && suggestion !== category && (
             <button className="c-suggest" onClick={() => patch({ category: suggestion })}>Sounds like: {CATEGORIES[suggestion].label}. Use this</button>
           )}
@@ -385,13 +403,18 @@ function ReportView({ nodes, center, inside, list, onSubmit, draft, setDraft, us
 // Where a report has got to, in words a citizen would use.
 function Journey({ report }) {
   const reached = STATUSES.indexOf(report.status);
+  const { step, total, note } = progressOf(report.status);
   return (
-    <ol className="z-journey" aria-label={`Progress: ${CITIZEN_STATUS[report.status]}`}>
-      {STATUSES.map((s, i) => {
-        const at = report.history.find((h) => h.status === s)?.at;
-        return <li key={s} className={i <= reached ? 'done' : ''} aria-current={i === reached ? 'step' : undefined}><i aria-hidden="true" /><b>{CITIZEN_STATUS[s]}</b>{at && <span>{fmtWhen(at)}</span>}</li>;
-      })}
-    </ol>
+    <div className="z-progressbar">
+      <p className="z-journey-now"><b>Step {step} of {total}: {CITIZEN_STATUS[report.status]}.</b> {note}</p>
+      <ol className="z-journey" aria-label={`Progress: step ${step} of ${total}, ${CITIZEN_STATUS[report.status]}`}>
+        {STATUSES.map((s, i) => {
+          // The latest time, because a job that was reopened reaches a stage more than once.
+          const at = report.history.filter((h) => h.status === s).pop()?.at;
+          return <li key={s} className={i <= reached ? 'done' : ''} aria-current={i === reached ? 'step' : undefined}><i aria-hidden="true" /><b>{CITIZEN_STATUS[s]}</b>{i <= reached && at && <span>{fmtWhen(at)}</span>}</li>;
+        })}
+      </ol>
+    </div>
   );
 }
 
@@ -440,13 +463,15 @@ function Receipt({ receipt, onAnother, onMine }) {
 }
 
 // ------------------------------------------------------------------ a citizen's own reports
-function MyReports({ reports, now, onReport }) {
+function MyReports({ reports, now, onReport, jobs, feedback, userId, onGrade, contractorReports, onReportContractor }) {
   const mine = [...reports].sort((a, b) => b.createdAt - a.createdAt);
   if (!mine.length) return <div className="c-empty"><p>You have not sent any reports yet. When you do, you can follow them here.</p><button className="c-btn" onClick={onReport}>Send a report</button></div>;
   const open = mine.filter((c) => c.status !== 'resolved').length;
+  const jobOf = (c) => jobs.find((j) => j.memberIds.includes(c.id));
+  const toGrade = mine.filter((c) => c.status === 'resolved' && jobOf(c) && !gradeForJob(feedback, userId, jobOf(c))).length;
   return (
     <div className="h-section z-mine">
-      <p className="z-lead"><b>{open} open</b>, {mine.length - open} fixed. Saved on this device.</p>
+      <p className="z-lead"><b>{open} open</b>, {mine.length - open} fixed. Saved on this device.{toGrade > 0 && <> <b>{toGrade} waiting for your grade.</b></>}</p>
       {mine.map((c) => {
         const cat = CATEGORIES[c.category];
         const dept = DEPARTMENTS[cat.dept];
@@ -467,6 +492,8 @@ function MyReports({ reports, now, onReport }) {
                 {c.status !== 'resolved' && <a className="c-btn" href={`tel:${dept.helpline}`}>Call {dept.short}</a>}
                 <a className="c-btn" href={mapsUrl(c)} target="_blank" rel="noreferrer">Open map ↗</a>
               </div>
+              {c.status === 'resolved' && <JobGrade job={jobOf(c)} feedback={feedback} userId={userId} onGrade={onGrade} invite />}
+              {c.status === 'resolved' && <ContractorReportBlock job={jobOf(c)} reports={contractorReports} userId={userId} onSend={onReportContractor} />}
               <p className="c-foot">Reference: {c.id}</p>
             </div>
           </article>
@@ -476,8 +503,349 @@ function MyReports({ reports, now, onReport }) {
   );
 }
 
+// ------------------------------------------------------------------ grades and suggestions
+const GradeBadge = ({ letter }) => <span className={`g-badge g-${letter}`} title={GRADES[letter].label}>{letter}</span>;
+
+function GradeForm({ existing, onSave, placeholder }) {
+  const [grade, setGrade] = useState(existing?.grade || null);
+  const [suggestion, setSuggestion] = useState(existing?.suggestion || '');
+  const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState(null);
+  const id = useId();
+  const unchanged = existing && grade === existing.grade && suggestion.trim() === existing.suggestion;
+  const submit = async () => {
+    setSaving(true); setNote(null);
+    try { await onSave(grade, suggestion); setNote('Thanks. Your grade is saved.'); } catch (e) { setNote(e.message || 'Could not save your grade. Please try again.'); }
+    setSaving(false);
+  };
+  return (
+    <div className="g-form">
+      <div className="c-chips g-chips" role="group" aria-label="Your grade">
+        {Object.entries(GRADES).map(([letter, g]) => (
+          <button key={letter} className={grade === letter ? 'on' : ''} aria-pressed={grade === letter} onClick={() => { setGrade(letter); setNote(null); }}><b>{letter}</b> {g.label}</button>
+        ))}
+      </div>
+      <label className="c-label" htmlFor={id}>Your suggestion (optional)</label>
+      <textarea id={id} className="z-text" rows={2} maxLength={SUGGESTION_MAX} value={suggestion} onChange={(e) => { setSuggestion(e.target.value); setNote(null); }} placeholder={placeholder} />
+      <MicButton onText={(text) => { setSuggestion((s) => appendDictated(s, text, SUGGESTION_MAX)); setNote(null); }} />
+      <div className="c-actions">
+        <button className="c-send" disabled={!grade || saving || unchanged} onClick={submit}>{saving ? 'Saving…' : existing ? 'Update my grade' : 'Save my grade'}</button>
+      </div>
+      <p className="c-foot" role="status">{note || (grade ? '' : 'Choose a grade to continue.')}</p>
+    </div>
+  );
+}
+
+// Folded away, so a list of fixed work stays short and easy to scan. With `invite`, the person's own
+// fixed report opens ready to grade. It stays open after saving, so they see their grade was kept.
+function JobGrade({ job, feedback, userId, onGrade, invite = false }) {
+  const mine = job ? gradeForJob(feedback, userId, job) : null;
+  const [open, setOpen] = useState(invite && !mine);
+  if (!job) return null;
+  return (
+    <details className={`z-why g-job ${invite ? 'g-invite' : ''}`} open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>{mine ? <>Your grade: <GradeBadge letter={mine.grade} /> Change it</> : invite ? 'It’s fixed. How was the work?' : 'Grade this work'}</summary>
+      <GradeForm existing={mine} placeholder="Is it holding up? What could have been done better?"
+        onSave={(grade, suggestion) => onGrade({ complaintId: mine?.complaintId || job.id, dept: job.dept, category: job.lead.category, grade, suggestion })} />
+    </details>
+  );
+}
+
+function ReportCardTable({ rows }) {
+  return (
+    <table className="g-table">
+      <thead><tr><th scope="col">Department</th><th scope="col">Grade</th><th scope="col">Average</th><th scope="col">Grades</th><th scope="col">Suggestions</th></tr></thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.dept}>
+            <th scope="row">{DEPARTMENTS[r.dept].short}</th>
+            <td><GradeBadge letter={r.letter} /></td>
+            <td>{r.avg.toFixed(1)} / 5</td>
+            <td>{r.count}</td>
+            <td>{r.suggestions}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// A citizen tells the control room about a contractor. Only the control room sees these.
+function ContractorReportBlock({ job, reports, userId, onSend }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState(null);
+  const [details, setDetails] = useState('');
+  const [photo, setPhoto] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [problem, setProblem] = useState(null);
+  const id = useId();
+  if (!job) return null;
+  const sent = reportForJob(reports, userId, job);
+  if (sent) {
+    return (
+      <div className="k-sent" role="status">
+        <b>Contractor report: {REPORT_STATUS[sent.status]}</b>
+        <span className="c-foot">{REPORT_REASONS[sent.reason]}{sent.details ? `: “${sent.details}”` : ''}</span>
+        {sent.reply && <p className="k-reply"><b>Control room:</b> {sent.reply}</p>}
+      </div>
+    );
+  }
+  if (!open) return <button className="c-btn k-open" onClick={() => setOpen(true)}>⚠️ Report the contractor to the control room</button>;
+  const addPhoto = async (file) => {
+    if (!file) return;
+    setProblem(null);
+    try { setPhoto(await preparePhoto(file)); } catch (e) { setProblem(e.message); }
+  };
+  const submit = async () => {
+    setSending(true); setProblem(null);
+    try { await onSend({ job, reason, details, photo }); } catch (e) { setProblem(e.message || 'Could not send your report. Please try again.'); setSending(false); }
+  };
+  return (
+    <section className="k-form" aria-label="Report the contractor">
+      <h4>Report the contractor to the control room</h4>
+      <p className="c-foot">Contractor: <b>{job.contractor || 'not named by the department yet'}</b>. Only the control room sees this report, without your name. Describe what you saw, as this is checked before anyone acts on it.</p>
+      <h5 id={`${id}-why`}>What went wrong?</h5>
+      <div className="c-chips" role="group" aria-labelledby={`${id}-why`}>
+        {Object.entries(REPORT_REASONS).map(([key, label]) => <button key={key} className={reason === key ? 'on' : ''} aria-pressed={reason === key} onClick={() => setReason(key)}>{label}</button>)}
+      </div>
+      {reason === 'unsafe' && <p className="c-warn">If someone is in danger, call <a href="tel:112">112</a> first.</p>}
+      <label className="c-label" htmlFor={id}>What did you see? (optional)</label>
+      <textarea id={id} className="z-text" rows={3} maxLength={REPORT_DETAILS_MAX} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="When was it, and where exactly?" />
+      <MicButton onText={(text) => setDetails((d) => appendDictated(d, text, REPORT_DETAILS_MAX))} />
+      <label className="c-btn k-photo">{photo ? '✓ Photo added. Change it' : '📷 Add a photo (optional)'}
+        <input type="file" accept="image/*" hidden onChange={(e) => { addPhoto(e.target.files[0]); e.target.value = ''; }} />
+      </label>
+      {problem && <p className="c-error" role="alert">{problem}</p>}
+      <div className="c-actions k-actions">
+        <button className="c-send" disabled={!reason || sending} onClick={submit}>{sending ? 'Sending…' : 'Send to the control room'}</button>
+        <button className="c-link" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+      {!reason && <p className="c-foot">Choose what went wrong to continue.</p>}
+    </section>
+  );
+}
+
+const WorkPhoto = ({ id }) => <img className="g-photo" src={workPhotoUrl(id)} alt={WORK_PHOTOS[id].alt} loading="lazy" style={WORK_PHOTOS[id].position ? { objectPosition: WORK_PHOTOS[id].position } : undefined} />;
+
+function PhotoCredits() {
+  return (
+    <details className="z-why g-credits">
+      <summary>Photo credits</summary>
+      <ul>
+        {Object.entries(WORK_PHOTOS).map(([id, p]) => (
+          <li key={id}>{CATEGORIES[id].label}: {p.author}, {p.license}, <a href={p.source} target="_blank" rel="noreferrer">Wikimedia Commons ↗</a></li>
+        ))}
+      </ul>
+      <p className="c-foot">Resized for this app.</p>
+    </details>
+  );
+}
+
+function GradeView({ user, feedback, jobs, now, onGrade, onNeedLogin, contractorReports, onReportContractor }) {
+  const [dept, setDept] = useState('');
+  const guest = user.role === 'guest';
+  const rows = reportCard(feedback);
+  return (
+    <div className="h-section g-view">
+      <div>
+        <h2>Grade the work you use</h2>
+        <p className="z-lead">Say how well a repair or a public service works for you, and what would make it better. Your name is not shown with your grade.</p>
+      </div>
+      {guest && <div className="c-empty"><p>Log in or sign up to give a grade or a suggestion. You can still see the report card below.</p><button className="c-btn" onClick={onNeedLogin}>Log in or sign up</button></div>}
+
+      {!guest && (
+        <section className="c-panel">
+          <h3>A service you use</h3>
+          <div className="g-services" role="group" aria-label="Choose a service">
+            {Object.entries(DEPARTMENTS).map(([id, d]) => {
+              const mine = gradeForService(feedback, user.id, id);
+              return (
+                <button key={id} className={`g-service ${dept === id ? 'on' : ''}`} aria-pressed={dept === id} onClick={() => setDept(dept === id ? '' : id)}>
+                  <WorkPhoto id={DEPARTMENT_PHOTO[id]} />
+                  {mine && <GradeBadge letter={mine.grade} />}
+                  <span>{d.short}</span>
+                </button>
+              );
+            })}
+          </div>
+          {dept && <p className="g-service-name"><b>{DEPARTMENTS[dept].name}</b></p>}
+          {dept && <GradeForm key={dept} existing={gradeForService(feedback, user.id, dept)} placeholder="What works well? What should change?"
+            onSave={(grade, suggestion) => onGrade({ dept, grade, suggestion })} />}
+        </section>
+      )}
+
+      {!guest && (
+        <section className="g-fixed">
+          <h3>Fixed work</h3>
+          {jobs.length === 0 && <p className="c-foot">Nothing has been marked as fixed yet. When a job is finished, you can grade it here.</p>}
+          {jobs.map((j) => {
+            const near = nearestArea(j.lead.lat, j.lead.lon);
+            return (
+              <article key={j.id} className="c-job g-work">
+                <div className="c-job-head a-head">
+                  <div className="g-work-photo">
+                    {j.photo ? <Photo blob={j.photo} alt={`Photo sent with this report: ${CATEGORIES[j.lead.category].label}`} className="g-photo" /> : <WorkPhoto id={j.lead.category} />}
+                    <span className="g-tag">{j.photo ? 'From the report' : 'Example photo'}</span>
+                  </div>
+                  <div className="c-job-main">
+                    <div className="c-job-top"><b className="c-mine-status">Fixed {timeAgo(j.fixedAt, now)}</b></div>
+                    <div className="c-job-title">{CATEGORIES[j.lead.category].label}</div>
+                    <div className="c-job-sub">{near ? `Near ${near.name} · ` : ''}{DEPARTMENTS[j.dept].short}{j.lead.sample ? ' · sample' : ''}</div>
+                  </div>
+                </div>
+                <div className="a-body">
+                  <JobGrade job={j} feedback={feedback} userId={user.id} onGrade={onGrade} />
+                  <ContractorReportBlock job={j} reports={contractorReports} userId={user.id} onSend={onReportContractor} />
+                </div>
+              </article>
+            );
+          })}
+        </section>
+      )}
+
+      <section className="c-panel">
+        <h3>Department report card</h3>
+        {rows.length ? <ReportCardTable rows={rows} /> : <p className="c-foot">No grades yet.</p>}
+        <p className="c-foot g-note">{feedback.some((f) => f.sample) ? 'Includes sample grades, so these numbers are for demonstration. ' : ''}Lowest grade first. Grades are people’s opinions, not an official rating. For now they stay on this device, so they do not reach the department yet.</p>
+      </section>
+      <PhotoCredits />
+    </div>
+  );
+}
+
+// What officers and the control room see. Officers see only their own departments.
+function GradesPanel({ feedback, departments }) {
+  const rows = reportCard(feedback, departments);
+  const ideas = suggestionsFor(feedback, departments);
+  return (
+    <div className="c-analysis g-panel">
+      <section className="c-panel">
+        <h3>What citizens say</h3>
+        {rows.length ? <ReportCardTable rows={rows} /> : <p className="c-foot">No grades yet.</p>}
+        {ideas.length > 0 && <h3 className="g-ideas-title">Suggestions, newest first</h3>}
+        {ideas.length > 0 && (
+          <ul className="g-ideas">
+            {ideas.map((f) => (
+              <li key={f.id}>
+                <GradeBadge letter={f.grade} />
+                <div>
+                  <p>{f.suggestion}</p>
+                  <span className="c-foot">{DEPARTMENTS[f.dept].short} · {f.category ? CATEGORIES[f.category].label : 'The service overall'} · {fmtWhen(f.createdAt)}{f.sample ? ' · sample' : ''}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ contractor reports, for the control room
+function ContractorReportCard({ report, name, now, onUpdate }) {
+  const [reply, setReply] = useState(report.reply);
+  const [note, setNote] = useState(null);
+  const near = nearestArea(report.lat, report.lon);
+  const update = async (patch, message) => {
+    setNote(null);
+    try { await onUpdate(reviewReport(report, { reply, ...patch })); setNote(message); } catch { setNote('Could not save. Please try again.'); }
+  };
+  return (
+    <article className="c-job k-card">
+      <div className="c-job-top">
+        <span className="c-status"><b>{REPORT_STATUS[report.status]}</b></span>
+        <span className="c-status">{timeAgo(report.createdAt, now)}{report.sample ? ' · sample' : ''}</span>
+      </div>
+      <div className="c-job-title">{REPORT_REASONS[report.reason]}</div>
+      <div className="c-job-sub">{name || NOT_NAMED} · {CATEGORIES[report.category].label}{near ? ` · near ${near.name}` : ''} · {DEPARTMENTS[report.dept].short}</div>
+      {report.details && <p className="c-quote">“{report.details}”</p>}
+      {report.photo && <Photo blob={report.photo} alt="Photo sent with this contractor report" className="k-photo-full" />}
+      <label className="c-label" htmlFor={`k-${report.id}`}>Reply to the citizen (optional)</label>
+      <textarea id={`k-${report.id}`} className="z-text" rows={2} maxLength={REPORT_DETAILS_MAX} value={reply} onChange={(e) => { setReply(e.target.value); setNote(null); }} placeholder="What did you find? What happens next?" />
+      <div className="c-actions k-actions">
+        <div className="c-chips" role="group" aria-label="Set status">
+          {[['reviewing', 'Under review'], ['closed', 'Closed']].map(([id, label]) => <button key={id} className={report.status === id ? 'on' : ''} aria-pressed={report.status === id} onClick={() => update({ status: id }, `Marked as ${label.toLowerCase()}.`)}>{label}</button>)}
+        </div>
+        <button className="c-btn" disabled={reply.trim() === report.reply} onClick={() => update({}, 'Reply saved.')}>Save reply</button>
+        <a className="c-btn" href={mapsUrl(report)} target="_blank" rel="noreferrer">Open map ↗</a>
+      </div>
+      {note && <p className="c-foot" role="status">{note}</p>}
+    </article>
+  );
+}
+
+function ContractorReportsView({ reports, feedback, list, now, onUpdate, onLoadExamples, onRemoveExamples }) {
+  const [filter, setFilter] = useState('all');
+  const summary = useMemo(() => contractorSummary(reports, feedback, list), [reports, feedback, list]);
+  const nameOf = (r) => contractorOf(r, list);
+  const shown = sortReports(reports).filter((r) => filter === 'all' || (cleanContractorName(nameOf(r)).toLowerCase() || NOT_NAMED) === filter);
+  const hasExamples = reports.some((r) => r.sample);
+  return (
+    <div className="c-analysis k-view">
+      <p className="c-notice">These are citizens’ reports, not findings. Check the work on site and hear from the contractor before acting. Departments and other citizens cannot see this page.</p>
+      {hasExamples && <p className="c-notice">Includes example reports with invented contractor names, for demonstration. <button className="c-link" onClick={() => { setFilter('all'); onRemoveExamples(); }}>Remove all sample data</button></p>}
+      {reports.length === 0 && <div className="c-empty"><p>No contractor reports yet. Citizens can send one from any fixed job.</p></div>}
+      {!hasExamples && <div className="k-examples"><button className="c-btn" onClick={onLoadExamples}>Load examples</button><span className="c-foot">Adds invented reports and sample jobs, so you can see how this page works.</span></div>}
+      {summary.length > 0 && (
+        <section className="c-panel">
+          <h3>By contractor</h3>
+          <div className="k-scroll">
+            <table className="g-table">
+              <thead><tr><th scope="col">Contractor</th><th scope="col">Open</th><th scope="col">All reports</th><th scope="col">Jobs reported</th><th scope="col">Most reported</th><th scope="col">Citizen grade</th></tr></thead>
+              <tbody>
+                {summary.map((c) => (
+                  <tr key={c.key}>
+                    <th scope="row">{c.name}</th>
+                    <td>{c.open}</td>
+                    <td>{c.reports}</td>
+                    <td>{c.jobs}</td>
+                    <td>{c.topReason ? REPORT_REASONS[c.topReason] : '–'}</td>
+                    <td>{c.letter ? <><GradeBadge letter={c.letter} /> <span className="c-foot">from {c.grades}</span></> : '–'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+      {reports.length > 0 && (
+        <div className="c-filters">
+          <select aria-label="Contractor" value={filter} onChange={(e) => setFilter(e.target.value)}>
+            <option value="all">All contractors</option>
+            {summary.filter((c) => c.reports).map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
+          </select>
+        </div>
+      )}
+      {shown.map((r) => <ContractorReportCard key={r.id} report={r} name={nameOf(r)} now={now} onUpdate={onUpdate} />)}
+    </div>
+  );
+}
+
+// The department records who is doing the work.
+function ContractorField({ value, known, onSave }) {
+  const [name, setName] = useState(value || '');
+  const [note, setNote] = useState(null);
+  const id = useId();
+  const clean = cleanContractorName(name);
+  const save = async () => {
+    setNote(null);
+    try { await onSave(clean); setNote(clean ? 'Contractor saved.' : 'Contractor removed.'); } catch { setNote('Could not save. Please try again.'); }
+  };
+  return (
+    <div className="k-field">
+      <label className="c-label" htmlFor={id}>Contractor doing this work</label>
+      <div className="k-field-row">
+        <input id={id} list={`${id}-known`} maxLength={CONTRACTOR_NAME_MAX} value={name} placeholder="Company or person" onChange={(e) => { setName(e.target.value); setNote(null); }} />
+        <datalist id={`${id}-known`}>{known.map((k) => <option key={k} value={k} />)}</datalist>
+        <button className="c-btn" disabled={clean === (value || '')} onClick={save}>Save</button>
+      </div>
+      {note && <p className="c-foot" role="status">{note}</p>}
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ department desk
-function JobCard({ job, open, onToggle, onStatus, onCascade, onRemove }) {
+function JobCard({ job, open, onToggle, onStatus, onCascade, onRemove, onContractor, knownContractors }) {
   const c = job.lead;
   const cat = CATEGORIES[c.category];
   const dept = DEPARTMENTS[cat.dept];
@@ -504,6 +872,7 @@ function JobCard({ job, open, onToggle, onStatus, onCascade, onRemove }) {
             {STATUSES.map((s) => <button key={s} className={c.status === s ? 'on' : ''} aria-pressed={c.status === s} onClick={() => onStatus(job, s)}>{STATUS_LABEL[s]}</button>)}
           </div>
           <ol className="c-history">{c.history.map((h) => <li key={h.status + h.at}>{STATUS_LABEL[h.status]}: {fmtWhen(h.at)}</li>)}</ol>
+          <ContractorField value={job.members.find((m) => m.contractor)?.contractor} known={knownContractors} onSave={(name) => onContractor(job, name)} />
           <div className="c-actions">
             <a className="c-btn" href={mapsUrl(c)} target="_blank" rel="noreferrer">Open in Google Maps ↗</a>
             {onCascade && CASCADE_KIND[c.category] && !resolved && <button className="c-btn" onClick={() => onCascade(c)}>What could fail next? ↗</button>}
@@ -516,7 +885,7 @@ function JobCard({ job, open, onToggle, onStatus, onCascade, onRemove }) {
   );
 }
 
-function DeskView({ groups, center, onStatus, onCascade, onRemove, onLoadSamples, onClearSamples, hasSamples, departments }) {
+function DeskView({ groups, center, onStatus, onCascade, onRemove, onLoadSamples, onClearSamples, hasSamples, departments, onContractor, knownContractors }) {
   const [dept, setDept] = useState('all');
   const [view, setView] = useState('open');
   const [openId, setOpenId] = useState(null);
@@ -542,7 +911,7 @@ function DeskView({ groups, center, onStatus, onCascade, onRemove, onLoadSamples
             {!groups.length && <button className="c-btn" onClick={onLoadSamples}>Load sample complaints</button>}
           </div>
         )}
-        {shown.map((g) => <JobCard key={g.id} job={g} open={openId === g.id} onToggle={() => setOpenId(openId === g.id ? null : g.id)} onStatus={onStatus} onCascade={onCascade} onRemove={onRemove} />)}
+        {shown.map((g) => <JobCard key={g.id} job={g} open={openId === g.id} onToggle={() => setOpenId(openId === g.id ? null : g.id)} onStatus={onStatus} onCascade={onCascade} onRemove={onRemove} onContractor={onContractor} knownContractors={knownContractors} />)}
         {hasSamples && <button className="c-link" onClick={onClearSamples}>Remove sample complaints</button>}
       </div>
       <div className="c-desk-map">
@@ -612,12 +981,14 @@ function AnalysisView({ stats, hasSamples, onLoadSamples }) {
 }
 
 // ------------------------------------------------------------------ page
-const TAB_ICON = { alerts: '🔔', report: '📷', mine: '📋', desk: '🗂️', analysis: '📊' };
+const TAB_ICON = { alerts: '🔔', report: '📷', mine: '📋', grade: '⭐', desk: '🗂️', analysis: '📊', contractors: '⚠️' };
 
 export default function ComplaintsPage({ user, onNeedLogin }) {
   const [nodes, setNodes] = useState(null);
   const [isSampleMap, setIsSampleMap] = useState(false);
   const [list, setList] = useState([]);
+  const [feedback, setFeedback] = useState([]);
+  const [contractorReports, setContractorReports] = useState([]);
   const [tab, setTab] = useState(user.role === 'officer' ? 'desk' : 'alerts');
   const isAdmin = user.role === 'admin';
   // Example data is for demonstrations: real sign-ups never see the option on the alerts page.
@@ -642,6 +1013,8 @@ export default function ComplaintsPage({ user, onNeedLogin }) {
       setNodes(d.graph.nodes.filter((n) => n.on_map !== false));
       setIsSampleMap(!!d.meta.info.is_sample);
       setList(await allComplaints());
+      setFeedback(await allFeedback());
+      setContractorReports(await allContractorReports());
     })().catch((e) => setError(e.message));
   }, []);
 
@@ -661,6 +1034,8 @@ export default function ComplaintsPage({ user, onNeedLogin }) {
   const scoped = useMemo(() => (departments ? list.filter((c) => departments.includes(CATEGORIES[c.category].dept)) : list), [list, departments]);
   const groups = useMemo(() => groupComplaints(scoped, nodes || [], now), [scoped, nodes, now]);
   const stats = useMemo(() => analyse(scoped, nodes || [], now), [scoped, nodes, now]);
+  const jobs = useMemo(() => fixedWork(list), [list]);
+  const knownContractors = useMemo(() => [...new Set(list.map((c) => c.contractor).filter(Boolean))].sort(), [list]);
   const hasSamples = list.some((c) => c.sample);
   const openCount = groups.filter((g) => g.lead.status !== 'resolved').length;
 
@@ -682,8 +1057,34 @@ export default function ComplaintsPage({ user, onNeedLogin }) {
   }, [list, nodes]);
 
   const setStatus = (job, status) => save(job.members.map((m) => withStatus(m, status)));
-  const loadSamples = () => save(sampleComplaints(nodes, Date.now()));
-  const clearSamples = async () => { await deleteComplaints(list.filter((c) => c.sample).map((c) => c.id)); setList(await allComplaints()); };
+  const loadSamples = async () => {
+    const samples = sampleComplaints(nodes, Date.now());
+    await saveFeedback(sampleFeedback(samples));
+    setFeedback(await allFeedback());
+    await saveContractorReports(sampleContractorReports(fixedWork(samples)));
+    setContractorReports(await allContractorReports());
+    await save(samples);
+  };
+  const clearSamples = async () => {
+    await deleteComplaints(list.filter((c) => c.sample).map((c) => c.id));
+    await deleteFeedback(feedback.filter((f) => f.sample).map((f) => f.id));
+    await deleteContractorReports(contractorReports.filter((r) => r.sample).map((r) => r.id));
+    setList(await allComplaints());
+    setFeedback(await allFeedback());
+    setContractorReports(await allContractorReports());
+  };
+  // Starting clean means sample jobs from an earlier day, or from before contractors existed, are not left behind.
+  const loadExamples = async () => { await clearSamples(); await loadSamples(); };
+  const saveContractorReport = async (report) => {
+    await saveContractorReports([report]);
+    setContractorReports(await allContractorReports());
+  };
+  const reportContractor = (details) => saveContractorReport(makeContractorReport({ ...details, userId: user.id }));
+  const setContractor = (job, name) => save(job.members.map((m) => ({ ...m, contractor: name })));
+  const saveGrade = async (details) => {
+    await saveFeedback([makeFeedback({ ...details, userId: user.id })]);
+    setFeedback(await allFeedback());
+  };
   const removeJob = async (job) => { await deleteComplaints(job.members.map((m) => m.id)); setList(await allComplaints()); };
   const toCascade = (c) => {
     window.location.hash = `#/cascade?report=${CASCADE_KIND[c.category]}&lon=${c.lon}&lat=${c.lat}`;
@@ -694,12 +1095,14 @@ export default function ComplaintsPage({ user, onNeedLogin }) {
 
   const desk = ['desk', `Department desk${openCount ? ` (${openCount})` : ''}`];
   const analysis = ['analysis', 'Infrastructure analysis'];
-  const alertsTab = ['alerts', 'Alerts near me'], reportTab = ['report', 'Send a report'];
+  const openContractorReports = contractorReports.filter((r) => r.status !== 'closed').length;
+  const contractorsTab = ['contractors', `Contractor reports${openContractorReports ? ` (${openContractorReports})` : ''}`];
+  const alertsTab = ['alerts', 'Alerts near me'], reportTab = ['report', 'Send a report'], gradeTab = ['grade', 'Grade & suggest'];
   const TABS = {
-    guest: [alertsTab, reportTab],
-    citizen: [alertsTab, reportTab, ['mine', 'My reports']],
+    guest: [alertsTab, reportTab, gradeTab],
+    citizen: [alertsTab, reportTab, ['mine', 'My reports'], gradeTab],
     officer: [desk, analysis, alertsTab],
-    admin: [alertsTab, reportTab, desk, analysis],
+    admin: [alertsTab, reportTab, desk, analysis, contractorsTab],
   }[user.role];
   return (
     <div className="c-page">
@@ -714,9 +1117,12 @@ export default function ComplaintsPage({ user, onNeedLogin }) {
         {tab === 'report' && (user.role === 'guest'
           ? <div className="c-empty"><p>Log in or sign up to send a report, so you can follow it afterwards. You can still see alerts and phone numbers without an account.</p><button className="c-btn" onClick={onNeedLogin}>Log in or sign up</button></div>
           : <ReportView nodes={nodes} center={center} inside={inside} list={list} user={user} draft={draft} setDraft={setDraft} onSubmit={(c) => save([c])} onMine={user.role === 'citizen' ? () => setTab('mine') : null} />)}
-        {tab === 'mine' && <MyReports reports={list.filter((c) => c.ownerId === user.id)} now={now} onReport={() => setTab('report')} />}
-        {tab === 'desk' && <DeskView groups={groups} center={center} onStatus={setStatus} onCascade={isAdmin ? toCascade : null} onRemove={isAdmin ? removeJob : null} onLoadSamples={loadSamples} onClearSamples={clearSamples} hasSamples={hasSamples && isAdmin} departments={departments} />}
+        {tab === 'mine' && <MyReports reports={list.filter((c) => c.ownerId === user.id)} now={now} onReport={() => setTab('report')} jobs={jobs} feedback={feedback} userId={user.id} onGrade={saveGrade} contractorReports={contractorReports} onReportContractor={reportContractor} />}
+        {tab === 'grade' && <GradeView user={user} feedback={feedback} jobs={jobs} now={now} onGrade={saveGrade} onNeedLogin={onNeedLogin} contractorReports={contractorReports} onReportContractor={reportContractor} />}
+        {tab === 'contractors' && isAdmin && <ContractorReportsView reports={contractorReports} feedback={feedback} list={list} now={now} onUpdate={saveContractorReport} onLoadExamples={loadExamples} onRemoveExamples={clearSamples} />}
+        {tab === 'desk' && <DeskView groups={groups} center={center} onStatus={setStatus} onCascade={isAdmin ? toCascade : null} onRemove={isAdmin ? removeJob : null} onLoadSamples={loadSamples} onClearSamples={clearSamples} hasSamples={hasSamples && isAdmin} departments={departments} onContractor={setContractor} knownContractors={knownContractors} />}
         {tab === 'analysis' && <AnalysisView stats={stats} hasSamples={scoped.some((c) => c.sample)} onLoadSamples={loadSamples} />}
+        {tab === 'analysis' && <GradesPanel feedback={feedback} departments={departments} />}
       </main>
     </div>
   );
