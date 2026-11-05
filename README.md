@@ -354,4 +354,3 @@ All values live in `sim/params.json`, each with its source.
 ---
 
 Map data © OpenStreetMap contributors (ODbL). Basemap and imagery: Esri and its data providers (credited on screen). Photos: Wikimedia Commons (author and licence on each file page).
- 
