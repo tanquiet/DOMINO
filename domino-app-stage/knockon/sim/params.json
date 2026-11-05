@@ -1,0 +1,86 @@
+{
+  "pump_restart_h": {
+    "value": 1.0,
+    "label": "Pump restart after a power trip (h)",
+    "assumption": false,
+    "source": "BWSSB officials (Deccan Herald): a ~20-minute outage can need nearly an hour to restart pumps"
+  },
+  "reservoir_refill_h": {
+    "value": 3.0,
+    "label": "City reservoir refill after inflow returns (h)",
+    "assumption": false,
+    "source": "BWSSB officials (Deccan Herald): about three more hours to refill ground-level reservoirs"
+  },
+  "reservoir_storage_h": {
+    "value": 1.0,
+    "label": "Hours a city reservoir keeps supplying without inflow",
+    "assumption": true,
+    "source": "Calibrated: with 1 h, a 20-minute trip gives ~4.3 h of disruption, matching BWSSB's description"
+  },
+  "reservoir_power_backup_h": {
+    "value": 0.0,
+    "label": "Backup power at city distribution pumps (h)",
+    "assumption": true,
+    "source": "Assumed none; Deccan Herald reports in-city distribution, not Cauvery pumping, is hit during load shedding"
+  },
+  "hospital_diesel_h": {
+    "value": 12.0,
+    "label": "Hospital diesel backup (h)",
+    "assumption": true,
+    "source": "PLACEHOLDER - replace with the number from the hospital call"
+  },
+  "hospital_water_h": {
+    "value": 8.0,
+    "label": "Hospital water storage (h)",
+    "assumption": true,
+    "source": "PLACEHOLDER - replace with the number from the hospital call"
+  },
+  "telecom_battery_h": {
+    "value": 4.0,
+    "label": "Telecom tower battery backup (h)",
+    "assumption": true,
+    "source": "Assumption"
+  },
+  "hospital_dual_feed_min_beds": {
+    "value": 200,
+    "label": "Hospitals with at least this many beds get two substations",
+    "assumption": true,
+    "source": "Assumption: larger hospitals usually have redundant feeds"
+  },
+  "tk_halli_flood_repair_h": {
+    "value": 36.0,
+    "label": "TK Halli flood repair time (h)",
+    "assumption": false,
+    "source": "Deccan Herald: BWSSB restored the flooded TK Halli pumping station in 36 hours (Sept 2022)"
+  },
+  "default_repair_h": {
+    "value": 12.0,
+    "label": "Repair time for other failed facilities (h)",
+    "assumption": true,
+    "source": "Assumption"
+  },
+  "generator_h": {
+    "value": 24.0,
+    "label": "Hours an added generator covers",
+    "assumption": true,
+    "source": "Assumption for the recommender"
+  },
+  "storage_h": {
+    "value": 12.0,
+    "label": "Hours of extra water storage added at a hospital",
+    "assumption": true,
+    "source": "Assumption for the recommender"
+  },
+  "cauvery_stages": {
+    "value": 5,
+    "label": "Parallel Cauvery supply stages modelled",
+    "assumption": true,
+    "source": "BWSSB's Cauvery scheme runs in stages I-V (Deccan Herald; Stage V per the April 2026 command-centre report). Which stage feeds which reservoir is inferred."
+  },
+  "horizon_h": {
+    "value": 72.0,
+    "label": "Simulation length (h)",
+    "assumption": false,
+    "source": "Model setting"
+  }
+}

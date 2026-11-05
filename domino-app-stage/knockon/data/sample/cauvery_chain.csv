@@ -1,0 +1,4 @@
+id,name,stage_order,lat,lon,location_quality,geocode_query
+cauvery_tk_halli,TK Halli pumping station,1,,,sample - no location,
+cauvery_harohalli,Harohalli pumping station,2,,,sample - no location,
+cauvery_tataguni,Tataguni pumping station,3,,,sample - no location,
