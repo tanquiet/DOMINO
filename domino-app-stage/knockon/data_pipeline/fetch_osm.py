@@ -4,13 +4,13 @@ DOMINO - pull Bengaluru infrastructure from OpenStreetMap.
 
 Run this ONCE on a laptop that has internet. After that, everything runs offline.
 
-Writes into knockon/data/:
+Writes into data/:
   facilities.geojson   substations, water facilities, hospitals, telecom (as points)
   roads.geojson        major roads, used as the offline base map
   cauvery_chain.csv    TK Halli -> Harohalli -> Tataguni pumping chain (CHECK BY HAND)
   manifest.json        counts and timestamp
 
-Usage (from the knockon folder):
+Usage (from the project folder):
   pip install -r requirements.txt
   python data_pipeline/fetch_osm.py
 
@@ -76,7 +76,9 @@ def city_polygon():
         poly = gdf.geometry.iloc[0]
         if poly.geom_type in ("Polygon", "MultiPolygon"):
             print(f"Area: official boundary of '{PLACE}'")
-            return poly
+            # The exact boundary has so many points that Overpass rejects the query (413).
+            # ~200 m of simplification is invisible at city scale and keeps requests small.
+            return poly.simplify(0.002, preserve_topology=True)
         print(f"  Place lookup returned a {poly.geom_type}, using fallback box")
     except Exception as exc:  # noqa: BLE001
         print(f"  Place lookup failed ({exc}); using fallback box")

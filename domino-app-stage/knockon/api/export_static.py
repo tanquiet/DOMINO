@@ -1,10 +1,10 @@
 """
-Export everything the browser app needs into ONE file: web/public/data/knockon.json
+Export everything the browser app needs into ONE file: web/public/data/domino.json
 (graph with inferred links, roads, parameters with sources, scenario definitions).
 
 The web app then runs the whole simulation in the browser - no server needed.
 
-Run from the knockon folder after any data or params change:
+run from the project folder after any data or params change:
     python api/export_static.py
 then rebuild (cd web && npm run build) or copy the file into web/dist/data/.
 """
@@ -40,7 +40,7 @@ def main():
         {"type": "FeatureCollection", "features": []}
     out = {
         "version": 1,
-        "meta": {"info": info, "params": params_meta(), "scenarios": SCENARIOS,
+        "meta": {"info": {k: v for k, v in info.items() if k != "data_dir"}, "params": params_meta(), "scenarios": SCENARIOS,
                  "orr_flood_polygon": ORR_FLOOD_POLYGON,
                  "attribution": "Map data (c) OpenStreetMap contributors. Dependencies between facilities are inferred."},
         "graph": {"nodes": nodes, "deps": deps},
@@ -48,13 +48,13 @@ def main():
     }
     dest = ROOT / "web" / "public" / "data"
     dest.mkdir(parents=True, exist_ok=True)
-    (dest / "knockon.json").write_text(json.dumps(out, separators=(",", ":")), encoding="utf-8")
+    (dest / "domino.json").write_text(json.dumps(out, separators=(",", ":")), encoding="utf-8")
     dist = ROOT / "web" / "dist"
     if dist.exists():
         (dist / "data").mkdir(exist_ok=True)
-        shutil.copy(dest / "knockon.json", dist / "data" / "knockon.json")
-    mb = (dest / "knockon.json").stat().st_size / 1e6
-    print(f"Wrote web/public/data/knockon.json ({mb:.1f} MB) - "
+        shutil.copy(dest / "domino.json", dist / "data" / "domino.json")
+    mb = (dest / "domino.json").stat().st_size / 1e6
+    print(f"Wrote web/public/data/domino.json ({mb:.1f} MB) - "
           f"{'SAMPLE data' if info['is_sample'] else 'real OpenStreetMap data'}: {info['counts']}")
 
 

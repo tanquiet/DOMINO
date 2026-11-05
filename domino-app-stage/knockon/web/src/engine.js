@@ -356,6 +356,41 @@ function* candidateInterventions(graph, touched, forced, chosen, generatorH, sto
   }
 }
 
+// Simulates only the candidates that could reach the top `keep`. A change at a facility can only help
+// hospitals at or downstream of it, so its gain cannot exceed the hours those hospitals lost. Trying the
+// highest ceilings first means most candidates can be skipped, with exactly the same answer as trying
+// them all (tools/parity_check.mjs checks this against the exhaustive Python engine).
+function evaluateCandidates(graph, failures, horizonH, chosen, candidates, current, keep) {
+  const hoursLost = new Map(current.hospitals.map((h) => [h.id, h.hours_down]));
+  const impact = current.impact_hospital_hours;
+  const ceilings = new Map();
+  const ceiling = (id) => {
+    if (ceilings.has(id)) return ceilings.get(id);
+    const seen = new Set([id]), queue = [id];
+    let total = 0, count = 0;
+    while (queue.length) {
+      const cur = queue.pop();
+      if (hoursLost.has(cur)) { total += hoursLost.get(cur) * (graph.nodes.get(cur).weight ?? 1); count++; }
+      for (const d of graph.dependents.get(cur) || []) if (!seen.has(d)) { seen.add(d); queue.push(d); }
+    }
+    const value = total + 0.005 * count + 0.02;     // allow for each figure being rounded to 2 decimals
+    ceilings.set(id, value);
+    return value;
+  };
+  const order = candidates.map((iv, i) => [ceiling(iv.node_id), i]).sort((a, b) => b[0] - a[0]);
+  const results = new Array(candidates.length).fill(null);
+  const topGains = [];
+  for (const [limit, i] of order) {
+    if (topGains.length >= keep && limit < topGains[keep - 1]) break;
+    const r = simulateWith(graph, failures, horizonH, [...chosen, candidates[i]]);
+    results[i] = r;
+    topGains.push(impact - r.impact_hospital_hours);
+    topGains.sort((a, b) => b - a);
+    if (topGains.length > keep) topGains.length = keep;
+  }
+  return results;
+}
+
 export function recommend(graph, failures, horizonH = 72, generatorH = 24, storageH = 12, top = 3, budget = 3) {
   const base = simulate(graph, failures, horizonH);
   const baseImpact = base.impact_hospital_hours;
@@ -375,8 +410,11 @@ export function recommend(graph, failures, horizonH = 72, generatorH = 24, stora
     const touched = new Set(current.timeline.map((e) => e.id));
     const wentDown = new Set(current.timeline.filter((e) => e.state === DOWN).map((e) => e.id));
     let best = null;
-    for (const iv of candidateInterventions(graph, touched, forced, chosen, generatorH, storageH, wentDown)) {
-      const r = simulateWith(graph, failures, horizonH, [...chosen, iv]);
+    const candidates = [...candidateInterventions(graph, touched, forced, chosen, generatorH, storageH, wentDown)];
+    const results = evaluateCandidates(graph, failures, horizonH, chosen, candidates, current, step === 0 ? top : 1);
+    for (let i = 0; i < candidates.length; i++) {
+      const iv = candidates[i], r = results[i];
+      if (!r) continue;
       const gain = currentImpact - r.impact_hospital_hours;
       if (gain > 1e-6) {
         if (step === 0) options.push(describe(iv, r, baseImpact));

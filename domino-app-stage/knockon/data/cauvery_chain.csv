@@ -1,0 +1,4 @@
+id,name,stage_order,lat,lon,location_quality,geocode_query
+cauvery_tk_halli,TK Halli pumping station,1,12.415371,77.197265,village centre from geocoding - replace with exact plant location from Google Maps if you can,"Torekadanahalli, Mandya, Karnataka, India"
+cauvery_harohalli,Harohalli pumping station,2,12.680169,77.473355,village centre from geocoding - replace with exact plant location from Google Maps if you can,"Harohalli, Ramanagara, Karnataka, India"
+cauvery_tataguni,Tataguni pumping station,3,12.843414,77.522473,village centre from geocoding - replace with exact plant location from Google Maps if you can,"Tataguni, Bengaluru, Karnataka, India"

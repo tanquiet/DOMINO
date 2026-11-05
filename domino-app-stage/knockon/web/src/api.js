@@ -1,4 +1,4 @@
-// The whole app runs in the browser: data comes from data/knockon.json and the simulation runs
+// The whole app runs in the browser: data comes from data/domino.json and the simulation runs
 // in a Web Worker (engine.js). No server needed - host the built folder anywhere.
 import * as core from './core.js';
 
@@ -15,7 +15,13 @@ function startWorker(data) {
       pending.delete(e.data.id);
       if (e.data.ok) p.resolve(e.data.res); else p.reject(new Error(e.data.err));
     };
-    w.onerror = () => { worker = null; };     // fall back to the main thread
+    // If the worker dies, finish anything it was doing on the main thread so nothing hangs.
+    w.onerror = () => {
+      worker = null;
+      const waiting = [...pending.values()];
+      pending.clear();
+      for (const p of waiting) call(p.fn, ...p.args).then(p.resolve, p.reject);
+    };
     worker = w;
     return call('init', data);
   } catch {
@@ -28,7 +34,7 @@ function call(fn, ...args) {
   if (worker) {
     return new Promise((resolve, reject) => {
       const id = ++seq;
-      pending.set(id, { resolve, reject });
+      pending.set(id, { resolve, reject, fn, args });
       worker.postMessage({ id, fn, args });
     });
   }
@@ -38,9 +44,17 @@ function call(fn, ...args) {
   }, 20));
 }
 
-export async function loadAll() {
-  const r = await fetch('data/knockon.json');
-  if (!r.ok) throw new Error('Could not load data/knockon.json - run: python api/export_static.py');
+// The cascade page can mount more than once. Sharing one load means a slower, older load can never
+// replace the worker a newer page is waiting on, which would leave that page loading forever.
+let loading = null;
+export function loadAll() {
+  if (!loading) loading = fetchAll().catch((e) => { loading = null; throw e; });
+  return loading;
+}
+
+async function fetchAll() {
+  const r = await fetch('data/domino.json');
+  if (!r.ok) throw new Error('Could not load data/domino.json - run: python api/export_static.py');
   const data = await r.json();
   core.init(data);                 // main-thread copy (fallback)
   await startWorker(data).catch(() => { worker = null; });

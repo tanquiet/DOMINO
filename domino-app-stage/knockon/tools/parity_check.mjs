@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { buildGraph, simulate, simulateWith, recommend, groupedCriticality, failuresFor } from '../web/src/engine.js';
 const root = new URL('..', import.meta.url);
-const data = JSON.parse(readFileSync(new URL('web/public/data/knockon.json', root)));
+const data = JSON.parse(readFileSync(new URL('web/public/data/domino.json', root)));
 const exp = JSON.parse(readFileSync(new URL('tools/parity_expected.json', root)));
 const defaults = Object.fromEntries(Object.entries(data.meta.params).map(([k, v]) => [k, v.value]));
 let fails = 0;

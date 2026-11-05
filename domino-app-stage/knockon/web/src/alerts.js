@@ -1,11 +1,27 @@
 // Alerts & response: turn a simulated cascade into alerts for the people responsible, and turn
 // their responses back into changes the engine can re-simulate (closed loop).
 
-const AGENCY = {
-  substation_tx: 'BESCOM', substation: 'BESCOM', feeder: 'BESCOM',
-  pump: 'BWSSB', reservoir: 'BWSSB', hospital: 'Hospital', telecom: 'Telecom',
+import { backupHours } from './mapkit.js';
+
+const AGENCY = { pump: 'BWSSB', reservoir: 'BWSSB', hospital: 'Hospital', telecom: 'Telecom' };
+export const AGENCIES = ['All', 'BWSSB', 'KPTCL', 'BESCOM', 'Hospital', 'Telecom'];
+const KPTCL_MIN_KV = 66;
+
+// KPTCL runs the transmission network (66 kV and above, and the dedicated lines to the Cauvery pumps).
+// BESCOM runs local distribution. OpenStreetMap often has no voltage, so those substations go to BESCOM.
+export function agencyOf(node) {
+  if (node.kind === 'feeder' || node.kind === 'substation_tx') return 'KPTCL';
+  if (node.kind === 'substation') return (node.meta?.voltage_kv ?? 0) >= KPTCL_MIN_KV ? 'KPTCL' : 'BESCOM';
+  return AGENCY[node.kind] || 'City';
+}
+
+// Who can receive a report. Numbers and addresses come from the official pages listed in contacts.js.
+export const REPORT_AGENCIES = {
+  BWSSB: { name: 'Bangalore Water Supply and Sewerage Board', covers: 'Cauvery pumping stations and city reservoirs',
+    email: 'callcenter@bwssb.gov.in', phone: '1916', whatsapp: '8762228888' },
+  KPTCL: { name: 'Karnataka Power Transmission Corporation', covers: 'transmission substations and the power lines to the pumps',
+    email: 'director.operations@kptcl.com', phone: '080-22228367', whatsapp: null },
 };
-export const AGENCIES = ['All', 'BESCOM', 'BWSSB', 'Hospital', 'Telecom'];
 
 // ASSUMPTIONS for the response model (shown on screen). Adjust once real response times are known.
 export const RESPONSE = {
@@ -29,7 +45,27 @@ function downstream(id, dependentsOf) {
   return seen;
 }
 
-export function buildAlerts(result, nodesById, dependentsOf) {
+// When a hospital loses one resource: the first spell with every supplier of it down, preferring
+// the first spell its backup can't cover. Read from the suppliers because the hospital's own
+// timeline can't show a second loss once it is already down.
+function hospitalLoss(providers, backupH, timeline) {
+  const down = new Set();
+  let since = null;
+  const spells = [];
+  for (const ev of timeline) {
+    if (!providers.includes(ev.id)) continue;
+    if (ev.state === 'DOWN') down.add(ev.id); else down.delete(ev.id);
+    const allDown = down.size === providers.length;
+    if (allDown && since === null) since = ev.t;
+    else if (!allDown && since !== null) { spells.push([since, ev.t]); since = null; }
+  }
+  if (since !== null) spells.push([since, Infinity]);
+  if (!spells.length) return null;
+  const fails = spells.find(([from, to]) => from + backupH < to);
+  return fails ? { hitAt: fails[0], failAt: fails[0] + backupH } : { hitAt: spells[0][0], failAt: null };
+}
+
+export function buildAlerts(result, nodesById, dependentsOf, depsOf = new Map(), params = {}) {
   if (!result) return [];
   const first = new Map(), firstDown = new Map(), firstBackup = new Map();
   for (const ev of result.timeline) {
@@ -39,11 +75,12 @@ export function buildAlerts(result, nodesById, dependentsOf) {
     if (ev.state === 'BACKUP' && !firstBackup.has(ev.id)) firstBackup.set(ev.id, ev);
   }
   const forced = new Map((result.failures || []).map((f) => [f.id, f]));
-  const hospitalsHit = (id) => {
+  const hospitalsBelow = (id) => {
     let c = 0;
-    for (const d of downstream(id, dependentsOf)) if (nodesById.get(d)?.kind === 'hospital' && firstDown.has(d)) c++;
+    for (const d of downstream(id, dependentsOf)) if (nodesById.get(d)?.kind === 'hospital') c++;
     return c;
   };
+  const depend = (c) => `${c} hospital${c === 1 ? ' depends' : 's depend'} on it`;
   const reservoirs = [...nodesById.values()].filter((n) => n.kind === 'reservoir');
 
   const alerts = [];
@@ -55,7 +92,7 @@ export function buildAlerts(result, nodesById, dependentsOf) {
     const isForced = forced.has(id);
     const why = (fd || fb || ev).reason || '';
     const resource = /water/.test(fb?.reason || why) ? 'water' : /power/.test(fb?.reason || why) ? 'power' : null;
-    const hosp = n.kind === 'hospital' ? 0 : hospitalsHit(id);
+    const hosp = n.kind === 'hospital' ? 0 : hospitalsBelow(id);
     let severity = 'watch';
     if (isForced || (failAt != null && failAt - hitAt <= 3)) severity = 'critical';
     else if (failAt != null) severity = 'high';
@@ -64,7 +101,7 @@ export function buildAlerts(result, nodesById, dependentsOf) {
     if (n.kind === 'substation' || n.kind === 'substation_tx' || n.kind === 'feeder') {
       if (isForced) {
         title = `${n.name} is down`;
-        detail = `${forced.get(id).reason}. ${hosp} hospital${hosp === 1 ? '' : 's'} depend on it. Repair this first.`;
+        detail = `${forced.get(id).reason}. ${depend(hosp)}. Repair this first.`;
         action = { type: 'priority_repair', label: 'Prioritise repair' };
       } else {
         title = `${n.name} lost supply`;
@@ -73,12 +110,12 @@ export function buildAlerts(result, nodesById, dependentsOf) {
     } else if (n.kind === 'pump') {
       title = `${n.name} stopped`;
       detail = isForced ? `${forced.get(id).reason}. Reservoirs on this line start draining.`
-        : /power/.test(why) ? 'Its power line failed. Ask BESCOM for priority restore.' : 'The upstream stage stopped sending water.';
+        : /power/.test(why) ? 'Its power line failed. Ask KPTCL for priority restore.' : 'The upstream stage stopped sending water.';
     } else if (n.kind === 'reservoir') {
       title = failAt != null ? `${n.name} will run dry` : `${n.name} on reserve`;
       detail = /power/.test(why)
-        ? `Lost power for distribution pumps at ${hr(hitAt)}. ${hosp} hospitals depend on it.`
-        : `Inflow stopped at ${hr(hitAt)}${failAt != null ? `; empties at ${hr(failAt)}` : ''}. ${hosp} hospitals depend on it.`;
+        ? `Lost power for distribution pumps at ${hr(hitAt)}. ${depend(hosp)}.`
+        : `Inflow stopped at ${hr(hitAt)}${failAt != null ? `; empties at ${hr(failAt)}` : ''}. ${depend(hosp)}.`;
       if (/water/.test(why) || /water/.test(fb?.reason || '')) {
         const line = n.meta?.supply_line;
         const others = reservoirs.filter((r) => r.meta?.supply_line !== line && !first.has(r.id));
@@ -93,26 +130,40 @@ export function buildAlerts(result, nodesById, dependentsOf) {
         }
       }
     } else if (n.kind === 'hospital') {
-      if (resource === 'water') {
-        title = `${n.name}: water supply`;
-        detail = failAt != null
-          ? `City water stops at ${hr(hitAt)}; your tank lasts until ${hr(failAt)}. Order a tanker now and cut non-essential use.`
-          : `City water stops at ${hr(hitAt)}; your tank should cover it. Conserve water.`;
-        action = { type: 'tanker', label: 'Send water tanker' };
-      } else {
-        title = `${n.name}: power supply`;
-        detail = failAt != null
-          ? `On diesel from ${hr(hitAt)}; diesel lasts until ${hr(failAt)}. Arrange refuelling or a mobile generator.`
-          : `On diesel from ${hr(hitAt)}; diesel should cover it. Check stock.`;
-        action = { type: 'generator', label: 'Send mobile generator' };
-      }
+      continue;   // handled below: one alert per resource lost
     } else if (n.kind === 'telecom') {
       title = `${n.name}: on battery`;
       detail = failAt != null ? `Battery runs out at ${hr(failAt)}. Send a generator.` : 'Battery should last.';
       action = failAt != null ? { type: 'generator', label: 'Send generator' } : null;
     }
-    alerts.push({ id: `a_${id}`, nodeId: id, name: n.name, kind: n.kind, agency: AGENCY[n.kind] || 'City',
+    // A facility that is itself knocked out can't be saved by backups or relinks: repair it.
+    if (isForced && (n.kind === 'reservoir' || n.kind === 'telecom')) {
+      title = `${n.name} is out of service`;
+      detail = `${forced.get(id).reason}.${hosp ? ` ${depend(hosp)}.` : ''} Repair this first.`;
+      action = { type: 'priority_repair', label: 'Prioritise repair' };
+    }
+    alerts.push({ id: `a_${id}`, nodeId: id, name: n.name, kind: n.kind, agency: agencyOf(n),
       severity, hitAt, failAt, resource, hosp, title, detail, action, forced: isForced });
+  }
+  // Hospitals: a separate alert for water and for power, because a tanker can't fix a power cut.
+  for (const n of nodesById.values()) {
+    if (n.kind !== 'hospital' || !first.has(n.id)) continue;
+    for (const g of depsOf.get(n.id) || []) {
+      const loss = hospitalLoss(g.providers, backupHours(n, g.resource, params), result.timeline);
+      if (!loss) continue;
+      const { hitAt, failAt } = loss;
+      const water = g.resource === 'water';
+      alerts.push({ id: `a_${n.id}_${g.resource}`, nodeId: n.id, name: n.name, kind: n.kind, agency: 'Hospital',
+        severity: failAt == null ? 'watch' : failAt - hitAt <= 3 ? 'critical' : 'high',
+        hitAt, failAt, resource: g.resource, hosp: 0, forced: false,
+        title: `${n.name}: ${water ? 'water' : 'power'} supply`,
+        detail: water
+          ? (failAt != null ? `City water stops at ${hr(hitAt)}; your tank lasts until ${hr(failAt)}. Order a tanker now and cut non-essential use.`
+            : `City water stops at ${hr(hitAt)}; your tank should cover it. Conserve water.`)
+          : (failAt != null ? `On diesel from ${hr(hitAt)}; diesel lasts until ${hr(failAt)}. Arrange refuelling or a mobile generator.`
+            : `On diesel from ${hr(hitAt)}; diesel should cover it. Check stock.`),
+        action: water ? { type: 'tanker', label: 'Send water tanker' } : { type: 'generator', label: 'Send mobile generator' } });
+    }
   }
   const rank = { critical: 0, high: 1, watch: 2 };
   alerts.sort((a, b) => (a.hitAt - b.hitAt) || (rank[a.severity] - rank[b.severity]) || ((a.failAt ?? 1e9) - (b.failAt ?? 1e9)));
@@ -150,6 +201,46 @@ export function responsesToPlan(alerts, responses, failures, R = RESPONSE) {
 // "Everyone acts within `delay` hours of their alert"
 export function autoResponses(alerts, delay) {
   return alerts.filter((a) => a.action).map((a) => ({ alertId: a.id, at: a.hitAt + delay, auto: true }));
+}
+
+// A plain-text situation report for one authority, always labelled as a simulation.
+export function agencyReport(agency, { scenario, result, alerts, nodesById, dependentsOf, respResult = null }, now = new Date()) {
+  const own = alerts.filter((a) => a.agency === agency);
+  const failing = own.filter((a) => a.failAt != null);
+  const lostService = new Set((result.hospitals || []).filter((h) => h.down_at_h != null).map((h) => h.id));
+  const hospitals = new Set();
+  for (const a of own) for (const d of downstream(a.nodeId, dependentsOf)) if (lostService.has(d)) hospitals.add(d);
+  const rank = { critical: 0, high: 1, watch: 2 };
+  // The three stations on a stage stop together, so the pumps are one line instead of filling the list.
+  const pumps = own.filter((a) => a.kind === 'pump');
+  const stages = [...new Set(pumps.map((a) => nodesById.get(a.nodeId)?.meta?.stage).filter(Boolean))].sort();
+  const others = own.filter((a) => a.kind !== 'pump')
+    .sort((x, y) => (y.forced - x.forced) || rank[x.severity] - rank[y.severity] || y.hosp - x.hosp || (x.failAt ?? 1e9) - (y.failAt ?? 1e9));
+  const top = others.slice(0, 5);
+  const when = (a) => (a.failAt == null ? '' : a.failAt <= a.hitAt ? ` since hour ${Math.round(a.failAt * 10) / 10}` : ` by hour ${Math.round(a.failAt * 10) / 10}`);
+  // Many facilities have generic names, so the location is what lets an officer find them.
+  const where = (a) => {
+    const n = nodesById.get(a.nodeId);
+    return n?.on_map === false || !n?.lat ? '' : ` [${n.lat.toFixed(4)}, ${n.lon.toFixed(4)}]`;
+  };
+  const lines = [
+    `DOMINO cascade report for ${agency}`,
+    'STATUS: SIMULATION ESTIMATE. NOT A CONFIRMED INCIDENT.',
+    `Scenario: ${scenario.label}`,
+    ...(scenario.report ? [`Reported by: ${scenario.report.reporter} (${scenario.report.verified ? 'verified' : 'unverified'})`] : []),
+    `Prepared: ${now.toLocaleString('en-IN')}`,
+    '',
+    `${own.length} ${agency} facilit${own.length === 1 ? 'y' : 'ies'} affected, ${failing.length} fail. ${hospitals.size} hospital${hospitals.size === 1 ? '' : 's'} downstream lose service.`,
+    '',
+    'Act first:',
+    ...(pumps.length ? [`- ${pumps.length} Cauvery pump unit${pumps.length === 1 ? '' : 's'} stopped${stages.length ? ` (Stage ${stages.join(', ')})` : ''}.`] : []),
+    ...top.map((a) => `- ${a.title}${when(a)}${where(a)}${a.hosp ? `: ${a.hosp} hospital${a.hosp === 1 ? '' : 's'} depend${a.hosp === 1 ? 's' : ''} on it` : ''}${a.action ? `. ${a.action.label}` : ''}`),
+    ...(others.length > top.length ? [`...and ${others.length - top.length} more.`] : []),
+    ...(respResult ? ['', `If everyone responds as planned: hospitals that fail ${result.hospitals_down} -> ${respResult.hospitals_down}.`] : []),
+    '',
+    'Links between facilities are estimated from location. Timings are model assumptions.',
+  ];
+  return { count: own.length, failing: failing.length, hospitals: hospitals.size, text: lines.join('\n') };
 }
 
 export { fmtH };

@@ -19,6 +19,7 @@ DOMINO is a live map of how Bengaluru's power, water, hospitals and telecom depe
 5. [Reading the map](#reading-the-map)
 6. [Report an incident](#report-an-incident)
 7. [Alerts and response](#alerts-and-response)
+7a. [The three pages](#the-three-pages)
 8. [Weak links, Fix it and the Resilience Index](#weak-links-fix-it-and-the-resilience-index)
 9. [How it works](#how-it-works)
 10. [Use the real Bengaluru data](#use-the-real-bengaluru-data)
@@ -41,6 +42,8 @@ DOMINO is a live map of how Bengaluru's power, water, hospitals and telecom depe
 | **Response replay** | Send tankers, generators or repair crews, then replay to see hospitals saved and damage avoided |
 | **Weak links** | Fails every facility one at a time and ranks which ones hurt hospitals most |
 | **Fix it** | Recommends the 3 changes (generator, water storage, second supply line) that protect the most hospitals |
+| **Citizen alerts** | People send photos of potholes, floods, heavy rain and heavy traffic; others nearby are warned, and the report goes to the responsible department's priority desk |
+| **Help desk** | Every authority's phone numbers with sources, a question form and settings |
 | **Place cards** | Tap any pin: status, backup hours, what it depends on, what it affects, satellite photo, Street View and Google Maps buttons |
 
 Everything runs in the browser. No server, no login, no API keys.
@@ -49,14 +52,21 @@ Everything runs in the browser. No server, no login, no API keys.
 
 ## Run it (Windows, VS Code)
 
-You need **Python 3** (only to serve the files) and **Chrome**. No packages to install.
+You need **Python 3** (only to serve the files), **Chrome**, and **Node 18+** once to build the app (`web/dist` is not stored in git).
 
-1. Unzip `DOMINO-full-app.zip` into `C:\HACKATHON WIN`. You get a folder called `domino`.
-2. In VS Code: **File → Open Folder → `C:\HACKATHON WIN\domino`**.
-3. Open a terminal (**Ctrl + `**) and paste, one line at a time:
+1. In VS Code: **File → Open Folder → `C:\HACKATHON WIN\domino-app-stage\knockon`**.
+2. Open a terminal (**Ctrl + `**) and build the app, one line at a time (needs internet the first time):
 
 ```powershell
-cd "C:\HACKATHON WIN\domino\web\dist"
+cd web
+npm install
+npm run build
+```
+
+3. Start it:
+
+```powershell
+cd dist
 Start-Process "http://127.0.0.1:8000"
 python -m http.server 8000 --bind 127.0.0.1
 ```
@@ -67,7 +77,7 @@ Keep the terminal open while presenting. **Ctrl+C** stops the app.
 
 **Mac / Linux:**
 ```bash
-cd domino/web/dist
+cd domino-app-stage/knockon/web/dist
 python3 -m http.server 8000 --bind 127.0.0.1
 # open http://127.0.0.1:8000
 ```
@@ -83,7 +93,7 @@ python3 -m http.server 8000 --bind 127.0.0.1
 | Plain road lines instead of a street map | The map tiles need internet. The app keeps working on its own road lines |
 | Link does nothing when clicked | `localhost` only works on the laptop that runs the server, while the terminal is open |
 
-**Optional bundled server:** `pip install -r requirements.txt`, then `python -m uvicorn api.main:app --port 8000` (or double-click `run.bat` / run `./run.sh`). It serves the same app.
+**Optional bundled server (after building):** `pip install -r requirements.txt`, then `python -m uvicorn api.main:app --port 8000` (or double-click `run.bat` / run `./run.sh`). It serves the same app.
 
 ---
 
@@ -111,14 +121,17 @@ python3 -m http.server 8000 --bind 127.0.0.1
 | **5** | 20-minute power trip at TK Halli (the ~4 h ripple BWSSB describes) |
 | **6** | Power line to TK Halli damaged (like Oct 2024) |
 | **7** | Illustrative flood zone on the Outer Ring Road |
+| **8** | Replay the TK Halli flood of September 2022: Stage III and IV units fail for 36 h |
 | **G** | After *Replay with responses*: switch between with and without responses |
 | **/** | Search a hospital, substation or reservoir |
 | **M** | Switch map: street map → dark street map → satellite → offline road lines |
 | **Space** | Play / pause |
 | **R** | Reset |
+| **C** | Open Citizen alerts |
+| **H** | Open Help desk & settings |
 | **Esc** | Close the card / cancel |
 
-Demos 5, 6 and 7 sit under **More** in the side panel.
+Demos 5, 6, 7 and 8 sit under **More** in the side panel.
 
 ---
 
@@ -130,7 +143,7 @@ Demos 5, 6 and 7 sit under **More** in the side panel.
 |---|---|
 | Blue | Substation (darker blue: 220 kV+ transmission substation) |
 | Teal | Water reservoir / tank |
-| Green | Hospital |
+| Green | Hospital (a small dot when zoomed out, a full pin when zoomed in) |
 | Purple | Telecom site (shown when zoomed in) |
 | **Amber** | Running on backup (diesel, tank, battery) |
 | **Red** | Down: no power or water |
@@ -167,7 +180,8 @@ As a scenario plays, DOMINO raises alerts for the people responsible:
 
 | Who | Alert example | Recommended action |
 |---|---|---|
-| BESCOM | "Substation X is down. 17 hospitals depend on it." | Prioritise repair |
+| KPTCL | "Dedicated power line to TK Halli is down." Transmission substations (66 kV and above) and the lines to the pumps | Prioritise repair |
+| BESCOM | "Substation X is down. 17 hospitals depend on it." Other substations | Prioritise repair |
 | BWSSB | "Reservoir Y will run dry at hour 1." | Link to another supply line |
 | Hospital | "City water stops at hour 1; your tank lasts until hour 9." | Send water tanker |
 | Hospital | "On diesel from hour 0; diesel lasts until hour 12." | Send mobile generator |
@@ -179,7 +193,91 @@ Each alert has a severity (critical / high / watch) and a countdown. Pop-ups app
 - **Replay with responses** re-runs the city with those actions and shows the damage avoided.
 - An action only helps if it lands **before** the facility fails; late actions are marked "too late".
 
+**Report to authorities:** during any scenario, the side panel prepares a report for **BWSSB** or **KPTCL**: what is affected, how many hospitals lose service downstream, and what to act on first. Open it as an email or WhatsApp draft, call, copy or share. Every report is labelled a simulation estimate, and nothing is sent until you press send in your own app. These go to real offices, so never send one during a demo. OpenStreetMap often has no voltage for a substation; those go to BESCOM, so some KPTCL substations may be listed under BESCOM.
+
 **Response assumptions** (in `web/src/alerts.js`): a tanker service starts 2 h after the request and keeps supplying until city water returns; a mobile generator arrives in 3 h and runs with refuelling; switching a reservoir to another line takes 1 h; a prioritised repair finishes 4 h after dispatch. Enough tankers and generators are assumed.
+
+---
+
+## Accounts and the three roles
+
+The app opens on a log in and sign up page. Emergency numbers are on it, and **Continue without an account** shows alerts and phone numbers.
+
+| Role | Opens | Can do |
+|---|---|---|
+| **Citizen** | Citizen alerts, Help desk | See alerts, send photo reports, confirm alerts, track their own reports |
+| **Department officer** | Department desk, Help desk | Work through their own department's queue and analysis, change job status |
+| **Control room admin** | Everything, including Cascade analysis | See all departments, run cascades, remove reports, manage users |
+
+**Demo accounts** (these are public, so remove them from `DEMO_ACCOUNTS` in `web/src/auth.js` before real use):
+
+| Role | Email | Password |
+|---|---|---|
+| Citizen | citizen@example.com | Domino-Citizen-2026 |
+| BWSSB officer | bwssb@example.com | Domino-Officer-2026 |
+| KPTCL officer | kptcl@example.com | Domino-Officer-2026 |
+| Control room admin | admin@example.com | Domino-Admin-2026 |
+
+Sign-up is open for citizens. Staff need an access code from their department: `DEMO-OFFICER` or `DEMO-ADMIN` in this demo.
+
+**This is not real security yet.** With no server, accounts live in the browser and the app's data file can be downloaded by anyone. Roles show the right screens, but they don't protect anything from someone who opens the browser's developer tools. Real logins, password reset and proper protection of the cascade data need a server. The app must run from `localhost` or an `https` address for accounts to work.
+
+---
+
+## The three pages
+
+The bar at the top switches between them.
+
+| Page | Address | For |
+|---|---|---|
+| **Citizen alerts** | `#/citizen` (**C**) | People: warnings near you, sending photos, and infrastructure analysis |
+| **Cascade analysis** | `#/cascade` | Control room: the DOMINO failure simulation |
+| **Help desk & settings** | `#/help` (**H**) | Every authority's numbers, questions, preferences |
+
+### Citizen alerts
+
+- **Alerts near me:** problems reported within 1, 2, 5 or 10 km of you, or of anywhere you tap, so you can check a route before leaving. Each shows how many people reported it, how recently, and what to do. Heavy traffic shows a likely cause if flooding, rain or a pothole is reported within 1.5 km.
+- **Send a report:** four short steps: the problem, a photo (optional, since some problems like no water have nothing to photograph), the place, then check and send. It covers potholes, flooding, heavy rain, heavy traffic, leaks, fallen wires and more, names the responsible department, and appears as an alert.
+- **My reports:** follow each report from Reported to Assigned, In progress and Fixed.
+- **Look and feel:** dark by default, with a Light/Dark button at the top of every page, remembered on each device. The cascade map stays dark in both. Citizens and guests also get large buttons and a bottom tab bar on phones.
+- **I see this too / Warn others:** confirm an alert, or send it on through WhatsApp or a message.
+- **Department desk:** every open job, most urgent first, with filters, target times and status history. Reports of the same problem become one job (within 100 m, 300 m for traffic, 1 km for rain).
+- **Infrastructure analysis:** open and overdue jobs, typical fix time, breakdowns and hotspots. This counts reports. It is not a structural engineering assessment.
+- **What could fail next?** Flood, rain, water and power reports open a pre-filled report on the Cascade page.
+
+Heavy rain reports drop out after 3 hours and traffic reports after 2 hours, unless someone reports again.
+
+**Who gets what**
+
+| Problem | Department |
+|---|---|
+| Pothole / road damage | GBA / BBMP Road Infrastructure |
+| Flooding / waterlogging | GBA / BBMP Storm Water Drains |
+| High-voltage tower / line | KPTCL |
+| Heavy rainfall | State disaster helpline (KSDMA) |
+| Heavy traffic, signal fault | Bengaluru Traffic Police |
+| Garbage | GBA / BBMP Solid Waste |
+| Street light | GBA / BBMP Electrical |
+| Fallen tree | GBA / BBMP Forest Cell |
+| Water leak, no water, sewage | BWSSB |
+| Fallen wire / power fault | BESCOM |
+
+**Priority score (0-100)** adds up points shown on every job: the type of problem (15-50), how serious the reporter says it is (0-20), within 500 m / 1 km of a hospital (+15 / +8), a flood, water or power problem within 300 m of a substation or reservoir (+10), more people reporting it (+3 each, up to 12), and time waiting (up to +5, or +10 once overdue). 70+ is Critical, 50+ High, 30+ Medium. The weights and target times (in `web/src/complaints.js`) are assumptions, not official service levels.
+
+### Help desk & settings
+
+- **Phone numbers:** emergency, BWSSB, BESCOM, KPTCL, GBA / BBMP, traffic police and government hospitals, searchable and tap-to-call. Each number links to its source; dated ones are marked "Older listing". All are in `web/src/contacts.js`, taken from official sites on 5 Nov 2026 and not test-called.
+- **Ask a question:** choose a topic to see who handles it and their number, or save a question with a reference number.
+- **Settings:** your area, alert distance, notifications, nearest hospitals, and deleting your reports.
+
+KPTCL lists office numbers but no public fault line, so power faults go to BESCOM. No official number was found for KC General Hospital, so it is not listed.
+
+### What this does not do yet
+
+- **Alerts and reports stay on one device.** They are saved in this browser, so another person's phone will not see them. To reach other people, use **Warn others**. Automatic alerts between phones, and delivery to departments, need a server, moderation of public photos and each department's agreement.
+- **Notifications** only work while the app is open on that device.
+- **Photos are not analysed.** The person picks the problem type; the app can suggest one from the words they type.
+- **Alerts are citizen reports, not official warnings,** and are labelled that way.
 
 ---
 
@@ -233,16 +331,16 @@ The engine exists twice: `sim/engine.py` (Python, tested) and `web/src/engine.js
 
 ## Use the real Bengaluru data
 
-Until you do this, the app runs on a **sample dataset** (yellow SAMPLE badge; place photos show random spots). Needs internet, once:
+The app ships with real OpenStreetMap data pulled on 5 Nov 2026: 1,080 hospitals, 185 substations, 386 water facilities, 55 telecom sites and 7,390 road segments. To refresh it (needs internet, once):
 
 ```powershell
-cd "C:\HACKATHON WIN\domino"
+cd "C:\HACKATHON WIN\domino-app-stage\knockon"
 pip install -r requirements.txt
 python data_pipeline\fetch_osm.py
 python api\export_static.py
 ```
 
-`fetch_osm.py` takes 2-10 minutes and writes `data/facilities.geojson`, `roads.geojson`, `cauvery_chain.csv` and `manifest.json`. `export_static.py` packs everything into `web/dist/data/domino.json`. Refresh the browser; the SAMPLE badge disappears.
+`fetch_osm.py` takes 2-10 minutes and writes `data/facilities.geojson`, `roads.geojson`, `cauvery_chain.csv` and `manifest.json`. `export_static.py` packs everything into `web/dist/data/domino.json`. Refresh the browser. If `data/facilities.geojson` is missing, the app falls back to clearly labelled sample data (yellow SAMPLE badge).
 
 Optional: in `data/cauvery_chain.csv`, replace the three pumping-station locations (village centres) with the exact plant locations from Google Maps.
 
@@ -270,14 +368,15 @@ On a normal host the street map, satellite view, photos, offline cache and "Add 
 ## Project structure
 
 ```
-domino/
-├── README.md
+domino-app-stage/knockon/
+├── README.md             points back to this file
 ├── requirements.txt          Python packages (data pull + optional server)
 ├── run.bat / run.sh          start the optional FastAPI server
 ├── data_pipeline/
 │   └── fetch_osm.py          pull Bengaluru facilities and roads from OpenStreetMap
 ├── data/
-│   └── sample/               clearly labelled sample data (used until the real pull)
+│   ├── facilities.geojson, roads.geojson, cauvery_chain.csv, manifest.json   real OpenStreetMap pull
+│   └── sample/               clearly labelled sample data (fallback only)
 ├── sim/
 │   ├── params.json           every timing and buffer, with label, assumption flag and source
 │   ├── build_graph.py        builds the dependency graph from the data
@@ -286,11 +385,13 @@ domino/
 │   └── sample_data.py        generates the sample data
 ├── api/
 │   ├── export_static.py      packs graph + roads into web/dist/data/domino.json
-│   ├── main.py               optional FastAPI server
-│   └── export_demo.py        saved-results demo mode
+│   └── main.py               optional FastAPI server
 ├── tools/
 │   ├── parity_expected.py    Python reference results
-│   └── parity_check.mjs      checks the browser engine matches Python
+│   ├── parity_check.mjs      checks the browser engine matches Python
+│   ├── test_web.mjs          tests for link strength, reports, alerts and responses
+│   ├── test_complaints.mjs   tests for complaint routing, priority and analysis
+│   └── test_auth.mjs         tests for accounts and what each role can open
 └── web/
     ├── dist/                 the built app: serve this folder
     ├── public/               manifest, service worker, icons, data/domino.json
@@ -299,7 +400,17 @@ domino/
         ├── engine.js         browser copy of the engine
         ├── core.js / worker.js / api.js   run the engine in a Web Worker
         ├── alerts.js         alerts and the response model
+        ├── main.jsx          the three pages, the top bar and who can open what
+        ├── AuthPage.jsx      log in and sign up
+        ├── auth.js           accounts and the three roles
+        ├── ComplaintsPage.jsx  citizen alerts, reports, department desk, analysis
+        ├── complaints.js     routing, alerts, priority score, duplicates, analysis
+        ├── HelpPage.jsx      phone numbers, questions, settings
+        ├── contacts.js       every authority number, with its source
+        ├── settings.js       this device's preferences
+        ├── complaintStore.js saves complaints and photos in the browser
         ├── AlertsPanel.jsx   alerts panel
+        ├── AgencyReports.jsx reports to BWSSB and KPTCL
         ├── ReportCard.jsx    report-an-incident form
         ├── PlaceUI.jsx       search, place card, photos, map controls
         ├── mapkit.js         pins, link strength, photo helpers
@@ -319,6 +430,7 @@ npm run build    # rebuilds web/dist
 python sim/test_engine.py
 python tools/parity_expected.py
 node tools/parity_check.mjs
+node --test tools/test_web.mjs tools/test_complaints.mjs tools/test_auth.mjs
 ```
 
 ---
@@ -345,6 +457,7 @@ All values live in `sim/params.json`, each with its source.
 
 ## Limits
 
+- **Real data has gaps.** OpenStreetMap tags some clinics and pharmacies as hospitals, many water facilities have no name ("Water Tower"), and no hospital lists 200+ beds, so no hospital gets a second power feed and the map currently shows no strong links.
 - **Locations are real** (OpenStreetMap). **Links between facilities are estimated** from location, because BESCOM and BWSSB don't publish feeder or pipe maps. With their data, the same tool becomes exact.
 - Hospital backup hours are placeholders until confirmed with a hospital; the sliders show how results change.
 - Alerts, reports and responses are simulated; nothing is sent to real people.

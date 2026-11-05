@@ -1,0 +1,14 @@
+{
+  "fetched_at": "2026-11-05T14:57:53+00:00",
+  "area": "Bengaluru, Karnataka, India",
+  "counts": {
+    "substation": 185,
+    "water": 386,
+    "hospital": 1080,
+    "telecom": 55,
+    "roads": 7390
+  },
+  "failed_layers": [],
+  "osmnx_version": "2.1.1",
+  "attribution": "Data (c) OpenStreetMap contributors, ODbL"
+}

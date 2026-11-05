@@ -1,5 +1,6 @@
 // Google-Maps-style pieces: search box, place card, zoom / map-type controls.
 import React, { useEffect, useMemo, useState } from 'react';
+import { STRENGTH, backupHours, commonsPhotos, googlePhotosUrl, linkStrength, satelliteUrl, streetViewUrl } from './mapkit.js';
 
 const KIND_LABEL = {
   substation_tx: 'Transmission substation (220 kV+)',
@@ -104,9 +105,45 @@ export function upstreamIds(id, depsOf) {
   return seen;
 }
 
+// ------------------------------------------------------------------ photos
+function PlacePhotos({ node, isSample }) {
+  const [photos, setPhotos] = useState([]);
+  const [noImagery, setNoImagery] = useState(false);
+  useEffect(() => {
+    let stale = false;
+    setPhotos([]); setNoImagery(false);
+    if (!isSample) commonsPhotos(node.lat, node.lon).then((p) => { if (!stale) setPhotos(p); });
+    return () => { stale = true; };
+  }, [node.id, node.lat, node.lon, isSample]);
+  return (
+    <>
+      {!noImagery && (
+        <div className="place-sat">
+          <img src={satelliteUrl(node.lat, node.lon)} alt={`Satellite view around ${node.name}`} loading="lazy" onError={() => setNoImagery(true)} />
+          <span className="sat-mark" aria-hidden="true" />
+          <span className="sat-credit">{isSample ? 'Sample data: this is a random spot' : 'Imagery: Esri, Maxar'}</span>
+        </div>
+      )}
+      {photos.length > 0 && (
+        <div className="place-photos">
+          {photos.map((ph) => (
+            <a key={ph.page} href={ph.page} target="_blank" rel="noreferrer" title={`${ph.title} (author and licence on Wikimedia Commons)`}>
+              <img src={ph.thumb} alt={ph.title} loading="lazy" />
+            </a>
+          ))}
+          <div className="place-foot wide-foot">Taken nearby. Photos: Wikimedia Commons</div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ------------------------------------------------------------------ place card
+const REPORT_LABEL = { substation: ['Report a power cut here', 'power'], substation_tx: ['Report a power cut here', 'power'],
+  reservoir: ['Report no water here', 'water'] };
+
 export function PlaceCard({ node, nodesById, depsOf, dependentsOf, status, hospitalRow, params, repairH,
-  onClose, onFail, onZoom, busy, cutHours, onCutHours }) {
+  onClose, onFail, onZoom, onReport, busy, cutHours, onCutHours, isSample }) {
   if (!node) return null;
   const groups = depsOf.get(node.id) || [];
   const down = node.kind === 'hospital' ? null : downstream(node.id, dependentsOf);
@@ -122,6 +159,7 @@ export function PlaceCard({ node, nodesById, depsOf, dependentsOf, status, hospi
       <div className="place-kind">{KIND_LABEL[node.kind] || node.kind}</div>
       <div className="place-name">{node.name}</div>
       <div className={`chip ${stateCls}`}>{stateTxt}</div>
+      <PlacePhotos node={node} isSample={isSample} />
 
       {node.kind === 'hospital' && (
         <div className="place-sec">
@@ -147,12 +185,14 @@ export function PlaceCard({ node, nodesById, depsOf, dependentsOf, status, hospi
           <div className="sec-h">Depends on</div>
           {groups.map((g, i) => {
             const path = pathUp(node.id, g.resource, depsOf, nodesById);
+            const strength = linkStrength(g.providers.length, backupHours(node, g.resource, params));
             return (
               <div key={i} className="dep">
                 <span className="dep-ic">{ICON[g.resource] || '•'}</span>
                 <span>{path.map((step, j) => (
                   <span key={j}>{j > 0 && <span className="arr"> ← </span>}{step.map((s) => s.name).join(' or ')}</span>
                 ))}</span>
+                <span className={`link-chip ${strength}`} title={STRENGTH[strength].hint}>{STRENGTH[strength].label}</span>
               </div>
             );
           })}
@@ -182,7 +222,17 @@ export function PlaceCard({ node, nodesById, depsOf, dependentsOf, status, hospi
         {failable && !isPower && <button className="danger" disabled={busy} onClick={onFail}>Simulate failure ({fmtH(repairH)})</button>}
         {node.on_map !== false && <button onClick={onZoom}>Zoom here</button>}
       </div>
-      <div className="place-foot">Links are inferred from location; utilities don't publish feeder maps.</div>
+      <div className="place-actions">
+        {node.on_map !== false && (
+          <button onClick={() => onReport({ kind: REPORT_LABEL[node.kind]?.[1] || null, where: { lon: node.lon, lat: node.lat },
+            reporter: node.kind === 'hospital' ? 'hospital' : null })}>{REPORT_LABEL[node.kind]?.[0] || 'Report a problem here'}</button>
+        )}
+      </div>
+      <div className="place-links">
+        <a href={streetViewUrl(node.lat, node.lon)} target="_blank" rel="noreferrer">Street View ↗</a>
+        <a href={googlePhotosUrl(node.lat, node.lon)} target="_blank" rel="noreferrer">Photos on Google Maps ↗</a>
+      </div>
+      <div className="place-foot">Links are estimated from location; utilities don't publish feeder maps.</div>
     </div>
   );
 }

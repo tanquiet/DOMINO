@@ -1,5 +1,5 @@
 """
-DOMINO API.   Run from the knockon folder:   python -m uvicorn api.main:app --port 8000
+DOMINO API.   Run from the project folder:   python -m uvicorn api.main:app --port 8000
 Then open http://localhost:8000  (serves the built frontend too).
 """
 from __future__ import annotations
