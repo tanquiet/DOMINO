@@ -10,22 +10,105 @@ DOMINO is a live map of how Bengaluru's power, water, hospitals and telecom depe
 
 ---
 
+## Why DOMINO: every link has already failed in Bengaluru
+
+Every link in DOMINO's failure chain has already broken in real life. Each example below comes from a published report (sources at the end of this section). Where a source is unclear, it says so.
+
+### The five strongest numbers
+
+1. **A 20-minute power cut becomes about 4 hours without water.** Pumps take nearly an hour to restart, then about 3 more hours to refill the city's reservoirs. By then at least 20% of Bengaluru's areas are affected, according to BWSSB officials. ([Deccan Herald](https://www.deccanherald.com/india/karnataka/bengaluru/bwssb-urges-electricity-authorities-for-uninterrupted-power-supply-to-pumping-stations-1213633.html))
+2. **About 110 power disruptions hit BWSSB pumping stations in a single three-month summer stretch.** ([Deccan Herald](https://www.deccanherald.com/india/karnataka/bengaluru/bwssb-urges-electricity-authorities-for-uninterrupted-power-supply-to-pumping-stations-1213633.html))
+3. **In September 2022, one flooded pumping station cut water to more than 50 areas for two days.** ([Reuters via Malay Mail](https://www.malaymail.com/news/world/2022/09/06/power-cuts-traffic-snarls-as-indias-tech-hub-endures-second-day-of-floods/26757))
+4. **One substation fire blacked out nearly 90% of central Bengaluru localities, including Vidhana Soudha.** ([Deccan Herald](https://www.deccanherald.com/india/karnataka/fire-in-220kv-substation-bengaluru-s-power-centres-feel-the-heat-805711.html))
+5. **During the 2024 water crisis, Apollo Bannerghatta was buying 40–50 water tankers a day** after its borewells dried up. ([The News Minute](https://www.thenewsminute.com/karnataka/bengaluru-crippling-water-shortage-leaves-hospitals-high-and-dry))
+
+### The failure chains, link by link
+
+**Flood → water pumping (September 2022)**
+- Bengaluru's Cauvery water travels about 100 km through three pumping stages: TK Halli, Harohalli and Tataguni. That's one chain with no bypass.
+- The TK Halli pumping station flooded with all pumps under 40 feet of water. BWSSB's chairperson called it the first time a pumping station was totally flooded.
+- 18 pumps and motors were damaged, costing about ₹3 crore. Standby units were borrowed from the other two stages, and the station was restored in 36 hours against a 7-day estimate.
+- The flood rose 1.5 m above the flood level the retaining walls were designed for, so the design assumption itself failed.
+- Rainfall that season was 162% above average.
+
+**Flood → power**
+- The Kadubeesanahalli power station flooded.
+- BESCOM also deliberately cuts power to flooded apartment basements to prevent short circuits.
+- So some outages are safety shutdowns, not damage. DOMINO treats both the same way: the supply is gone for a number of hours.
+
+**Power → water (this happens even without floods)**
+- **2019:** TK Halli had 14 power disruptions in about two months. Officials said a five-minute cut causes about a half-hour stoppage in pumping. A sudden stop also sends water surging backwards, which can burst pipes.
+- **October 2024:** lightning and rain damaged transformers feeding TK Halli and Harohalli, and both stations lost power at about 11 PM.
+- **Undated incident (the article gives no date):** an electrical failure at TK Halli and Tataguni stopped pumps for about 8.5 hours.
+  - It hit the stages supplying 140 and 320 million litres a day.
+  - Affected areas included Hebbal, RT Nagar, Rajajinagar, Yelahanka and Banaswadi.
+
+**Power → hospitals**
+- **February 2023:** Bowring and Lady Curzon Hospital lost grid power for about 12 hours after a cable was cut.
+  - It ran on its generator, with diesel topped up twice.
+  - Some patients moved to Victoria and Vani Vilas hospitals.
+  - That diesel buffer is the countdown DOMINO shows on every hospital.
+- **The 220 kV substation fire:** load had to be rerouted to a substation at Victoria Hospital. That rerouting is the redundancy DOMINO measures (a strong link).
+- **September 2022, Ballari (Karnataka, not Bengaluru):** two ICU patients died during a power cut at VIMS. The opposition said backup power failed; the government disputed that, citing a 1.5-hour backup. The cause is disputed.
+
+**Water → hospitals (2024 crisis)**
+- Vydehi Hospital in Whitefield needs 8–10 lakh litres a day. BWSSB supply to its area had stopped, and its borewells were barely coping.
+- Tanker prices rose from ₹80 to ₹120 per kilolitre in six months.
+- Apollo Bannerghatta was spending ₹30,000–35,000 a day on water.
+- In March 2024, BWSSB cut Cauvery supply to bulk consumers, including hospitals, by up to 20%.
+
+**Power → telecom → hospitals**
+- NIMHANS and Sanjay Gandhi Institute of Trauma and Orthopaedics lost landlines for two days after power to a BSNL exchange was cut.
+- Mobile coverage inside operating theatres and ICUs was poor, so staff used personal phones.
+- The report places this in mid-July during the Covid period. The year isn't stated directly.
+
+### Nobody owns the whole chain
+
+These chains cross agency boundaries: BESCOM and KPTCL (power), BWSSB (water), BSNL (telecom) and the hospitals themselves. BWSSB has had to publicly urge the power utilities for uninterrupted supply, and a senior Urban Development official had to chair a meeting to coordinate them. **Nobody owns the whole chain.** That is the gap DOMINO fills.
+
+### Notes on the evidence
+
+- We found no public tool that maps these dependencies for Bengaluru. That isn't proof that none exists.
+- We could not verify a typical hospital diesel-backup figure, so DOMINO uses a placeholder until a hospital confirms it.
+- Two incidents above have no exact date in the source (the 8.5-hour TK Halli / Tataguni failure and the NIMHANS phone outage).
+
+### Sources
+
+- [Deccan Herald – BWSSB restores flooded TK Halli pumping station in 36 hours](https://www.deccanherald.com/india/karnataka/bengaluru/bengaluru-bbwssb-restores-flooded-tk-halli-pumping-station-in-36-hours-1143174.html)
+- [The News Minute – Water supply affected as pumping station flooded](https://www.thenewsminute.com/article/bengaluru-water-supply-be-affected-pumping-station-flooded-list-areas-167547)
+- [Reuters via Malay Mail – Power cuts, traffic snarls as tech hub endures second day of floods](https://www.malaymail.com/news/world/2022/09/06/power-cuts-traffic-snarls-as-indias-tech-hub-endures-second-day-of-floods/26757)
+- [Deccan Herald – BWSSB urges uninterrupted power to pumping stations](https://www.deccanherald.com/india/karnataka/bengaluru/bwssb-urges-electricity-authorities-for-uninterrupted-power-supply-to-pumping-stations-1213633.html)
+- [The News Minute – BWSSB looks to fix power cuts affecting water supply (2019)](https://www.thenewsminute.com/article/bwssb-looks-fix-issue-power-cuts-affecting-water-supply-bengaluru-98091)
+- [Asianet Newsable – Rain damages TK Halli transformer (Oct 2024)](https://newsable.asianetnews.com/karnataka-news/bengaluru-water-supply-to-face-disruptions-after-heavy-rainfall-damages-tk-hall-transformer-vkp-skrhq6)
+- [Deccan Herald – Snag at TK Halli](https://www.deccanherald.com/india/karnataka/bengaluru/snag-t-k-halli-reservoir-2476944)
+- [Deccan Herald – Load shedding hits water supply](https://www.deccanherald.com/india/karnataka/bengaluru/load-shedding-hit-water-supply-2239726)
+- [Deccan Herald – Fire in 220 kV substation](https://www.deccanherald.com/india/karnataka/fire-in-220kv-substation-bengaluru-s-power-centres-feel-the-heat-805711.html)
+- [Deccan Herald – Techies hit by lengthy unscheduled power cuts](https://www.deccanherald.com/india/karnataka/bengaluru/bengaluru-techies-in-a-quandary-over-lengthy-unscheduled-power-cuts-1142841.html)
+- [Public TV – Bowring Hospital without electricity for 12 hours](https://english.publictv.in/patients-at-bowring-hospital-in-bluru-suffer-without-electricity-for-12-hours/)
+- [The Hans India – Power outage at VIMS Ballari](https://www.thehansindia.com/karnataka/bengaluru-power-outage-at-hospital-kills-2-patients-761886)
+- [The News Minute – Water shortage leaves hospitals high and dry (2024)](https://www.thenewsminute.com/karnataka/bengaluru-crippling-water-shortage-leaves-hospitals-high-and-dry)
+- [Down To Earth – BWSSB 20% cut to bulk consumers](https://www.downtoearth.org.in/water/bengaluru-water-crisis-bwssb-announces-20-water-cut-to-bulk-consumers-identifies-areas-bearing-the-brunt-94973)
+- [inkl – Two hospitals without phone link for two days](https://www.inkl.com/news/bengaluru-2-hospitals-went-without-phone-link-for-2-days-disrupting-patient-care)
+
+---
+
 ## Contents
 
-1. [What it does](#what-it-does)
-2. [Run it (Windows, VS Code)](#run-it-windows-vs-code)
-3. [Two-minute demo](#two-minute-demo)
-4. [Keyboard shortcuts](#keyboard-shortcuts)
-5. [Reading the map](#reading-the-map)
-6. [Report an incident](#report-an-incident)
-7. [Alerts and response](#alerts-and-response)
-8. [Weak links, Fix it and the Resilience Index](#weak-links-fix-it-and-the-resilience-index)
-9. [How it works](#how-it-works)
-10. [Use the real Bengaluru data](#use-the-real-bengaluru-data)
-11. [Put it online](#put-it-online)
-12. [Project structure](#project-structure)
-13. [Where the numbers come from](#where-the-numbers-come-from)
-14. [Limits](#limits)
+1. [Why DOMINO](#why-domino-every-link-has-already-failed-in-bengaluru)
+2. [What it does](#what-it-does)
+3. [Run it (Windows, VS Code)](#run-it-windows-vs-code)
+4. [Two-minute demo](#two-minute-demo)
+5. [Keyboard shortcuts](#keyboard-shortcuts)
+6. [Reading the map](#reading-the-map)
+7. [Report an incident](#report-an-incident)
+8. [Alerts and response](#alerts-and-response)
+9. [Weak links, Fix it and the Resilience Index](#weak-links-fix-it-and-the-resilience-index)
+10. [How it works](#how-it-works)
+11. [Use the real Bengaluru data](#use-the-real-bengaluru-data)
+12. [Put it online](#put-it-online)
+13. [Project structure](#project-structure)
+14. [Where the numbers come from](#where-the-numbers-come-from)
+15. [Limits](#limits)
 
 ---
 
